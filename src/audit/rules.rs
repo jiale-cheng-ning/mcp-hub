@@ -1,7 +1,6 @@
 use crate::config::model::ServerEntry;
 
-#[derive(Debug, PartialEq)]
-#[allow(dead_code)]
+#[derive(Debug, PartialEq, serde::Serialize)]
 pub enum Severity {
     Critical,
     Warning,
@@ -11,7 +10,7 @@ pub enum Severity {
 #[derive(Debug, serde::Serialize)]
 pub struct Finding {
     pub rule_id: String,
-    pub severity: String,
+    pub severity: Severity,
     pub server_name: String,
     pub message: String,
     pub fix: String,
@@ -27,7 +26,7 @@ pub fn check_env_secrets(server: &ServerEntry) -> Vec<Finding> {
         if secret_patterns.iter().any(|p| upper.contains(p)) && !value.is_empty() {
             findings.push(Finding {
                 rule_id: "ENV_PLAINTEXT_SECRET".into(),
-                severity: "Warning".into(),
+                severity: Severity::Warning,
                 server_name: server.name.clone(),
                 message: format!("Potential secret '{}' stored in plaintext config", name),
                 fix: "Use environment variable reference or secret manager".into(),
@@ -52,7 +51,7 @@ pub fn check_permissions(server: &ServerEntry) -> Vec<Finding> {
             };
             findings.push(Finding {
                 rule_id: rule.into(),
-                severity: "Warning".into(),
+                severity: Severity::Warning,
                 server_name: server.name.clone(),
                 message: format!("Server '{}'", server.name) + " " + msg,
                 fix: "Restrict directory scope with a specific path".into(),
@@ -74,7 +73,7 @@ pub fn check_version_pinning(server: &ServerEntry) -> Vec<Finding> {
                 if !after_slash.contains('@') {
                     findings.push(Finding {
                         rule_id: "NO_VERSION_PIN".into(),
-                        severity: "Info".into(),
+                        severity: Severity::Info,
                         server_name: server.name.clone(),
                         message: format!("Unpinned package version: '{}'", arg),
                         fix: "Pin to a specific version (e.g., @scope/pkg@1.2.0)".into(),
@@ -97,7 +96,7 @@ pub fn check_duplicates(servers: &[ServerEntry]) -> Vec<Finding> {
             if a.command == b.command && a.args == b.args && a.source_client != b.source_client {
                 findings.push(Finding {
                     rule_id: "DUPLICATE_SERVER".into(),
-                    severity: "Info".into(),
+                    severity: Severity::Info,
                     server_name: b.name.clone(),
                     message: format!(
                         "Server '{}' duplicates '{}' (same command in {} and {})",

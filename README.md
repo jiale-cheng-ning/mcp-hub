@@ -7,142 +7,96 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
 
-Manage, monitor, and audit MCP server configurations across Claude Desktop, Cursor, VS Code, and more — from a single terminal dashboard.
+You installed MCP servers in Claude Desktop, Cursor, VS Code, and Claude Code.
+They're scattered across different config files.
+Some are broken. Some have security issues. You can't see them all at once.
+
+**mcp-hub fixes that.** One terminal dashboard. All your servers. Health checks included.
+
+<img src="assets/mcp-hub-demo.svg" alt="mcp-hub TUI demo" width="720"/>
 
 </div>
 
 ---
 
-## Features
+## What it does
 
-- **TUI Dashboard** — Interactive terminal UI to browse and inspect all MCP servers
-- **Auto-Discovery** — Automatically finds MCP configs from all installed AI clients
-- **Security Audit** — Detects plaintext secrets, dangerous permissions, unpinned versions, duplicates
-- **Health Checks** — See which servers are running and which are down
-- **Single Binary** — One Rust binary, no runtime dependencies
+| Feature | Description |
+|---------|-------------|
+| **TUI Dashboard** | Interactive terminal UI — browse, inspect, and filter all MCP servers |
+| **Auto-Discovery** | Scans Claude Desktop, Claude Code, Cursor, Windsurf configs automatically |
+| **Security Audit** | Finds plaintext secrets, dangerous permissions, unpinned packages, duplicates |
+| **Health Checks** | Shows which servers are running and which are down |
+| **Single Binary** | One Rust binary. No runtime. No dependencies. `cargo install` and go. |
 
-## Installation
-
-### From source (requires Rust)
+## Install
 
 ```bash
+# From GitHub (requires Rust)
 cargo install --git https://github.com/jiale-cheng-ning/mcp-hub
-```
 
-### Build locally
-
-```bash
+# Or clone and build
 git clone https://github.com/jiale-cheng-ning/mcp-hub.git
 cd mcp-hub
 cargo build --release
+# binary: target/release/mcp-hub
 ```
 
-The binary will be at `target/release/mcp-hub`.
-
-## Quick Start
+## Usage
 
 ```bash
-# Launch the TUI dashboard
-mcp-hub
-
-# List all discovered MCP servers
-mcp-hub scan
-
-# List servers as JSON (for scripting)
-mcp-hub scan --json
-
-# Filter by client
-mcp-hub scan --client cursor
-
-# Run security audit
-mcp-hub audit
-
-# Audit output as JSON (for CI)
-mcp-hub audit --json
+mcp-hub              # Launch TUI dashboard
+mcp-hub scan         # List all servers in a table
+mcp-hub scan --json  # JSON output for scripting
+mcp-hub audit        # Run security audit
+mcp-hub audit --json # JSON output for CI
 ```
 
-## TUI Dashboard
-
-Launch with `mcp-hub` (no arguments):
-
-```
-+------------------------- MCP Hub -------------------------+
-|  [Servers] [Audit]                                        |
-+-----------------------------------------------------------+
-|                                                           |
-|  +--------------+--------+--------+--------+-----------+  |
-|  | Name         | Client | Command| Status |           |  |
-|  +--------------+--------+--------+--------+-----------+  |
-|  | filesystem   | Claude | npx    | running|           |  |
-|  | github       | Claude | npx    | running|           |  |
-|  | brave-search | Cursor | npx    | stopped|           |  |
-|  +--------------+--------+--------+--------+-----------+  |
-|                                                           |
-|  -- Detail ------------------------------------------------|
-|  Name: github                                             |
-|  Command: npx -y @modelcontextprotocol/server-github      |
-|  Env: GITHUB_PERSONAL_ACCESS_TOKEN=****                   |
-|                                                           |
-+-- Keys ----------------------------------------------------+
-|  j/k: navigate  Tab: switch  q: quit                      |
-+-----------------------------------------------------------+
-```
-
-### Keybindings
+### TUI keybindings
 
 | Key | Action |
 |-----|--------|
-| `j` / `Down` | Move down |
-| `k` / `Up` | Move up |
+| `j` / `↓` | Move down |
+| `k` / `↑` | Move up |
 | `Tab` | Switch between Servers and Audit tabs |
 | `q` / `Esc` | Quit |
 
-## Security Audit
+### Audit rules
 
-`mcp-hub audit` checks all discovered configs for:
-
-| Rule | Severity | Description |
-|------|----------|-------------|
-| `ENV_PLAINTEXT_SECRET` | Warning | Env var name suggests a secret (TOKEN, KEY, etc.) stored in plaintext |
-| `PERM_ROOT` | Warning | Server has unrestricted access to root filesystem |
-| `PERM_HOME` | Warning | Server has unrestricted access to home directory |
-| `NO_VERSION_PIN` | Info | npm package used without pinned version |
+| Rule | Severity | What it catches |
+|------|----------|-----------------|
+| `ENV_PLAINTEXT_SECRET` | Warning | API keys / tokens stored as plaintext in config |
+| `PERM_ROOT` / `PERM_HOME` | Warning | Filesystem servers with unrestricted access |
+| `NO_VERSION_PIN` | Info | npm packages without pinned versions |
 | `DUPLICATE_SERVER` | Info | Same server configured in multiple clients |
 
-Example output:
+### Example: `mcp-hub audit`
 
 ```
-WARNING (2)
-  +-- filesystem: Server 'filesystem' has unrestricted access to root filesystem
-  |   Fix: Restrict directory scope with a specific path
-  +-- github: Potential secret 'GITHUB_PERSONAL_ACCESS_TOKEN' stored in plaintext config
-      Fix: Use environment variable reference or secret manager
+🟡 WARNING (3)
+  ├─ filesystem: Server 'filesystem' has unrestricted access to root filesystem
+  │  Fix: Restrict directory scope with a specific path
+  ├─ github: Potential secret 'GITHUB_PERSONAL_ACCESS_TOKEN' stored in plaintext config
+  │  Fix: Use environment variable reference or secret manager
+  ├─ brave-search: Potential secret 'BRAVE_API_KEY' stored in plaintext config
+  │  Fix: Use environment variable reference or secret manager
 
-INFO (1)
-  +-- github: Unpinned package version: '@modelcontextprotocol/server-github'
-      Fix: Pin to a specific version (e.g., @scope/pkg@1.2.0)
+ℹ️  INFO (4)
+  ├─ filesystem: Unpinned package version: '@modelcontextprotocol/server-filesystem'
+  │  Fix: Pin to a specific version (e.g., @scope/pkg@1.2.0)
+  ...
 
-Total findings: 3
+Total findings: 7
 ```
 
-## Supported Clients
+## Supported clients
 
-| Client | Config Path |
-|--------|------------|
+| Client | Config location |
+|--------|----------------|
 | Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |
 | Claude Code | `~/.claude/settings.json` |
 | Cursor | `~/.cursor/mcp.json` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
-
-## CLI Reference
-
-| Command | Description | Flags |
-|---------|-------------|-------|
-| `mcp-hub` | Launch TUI dashboard | — |
-| `mcp-hub scan` | List all servers | `--json`, `--client <name>` |
-| `mcp-hub audit` | Run security audit | `--json` |
-| `mcp-hub --help` | Show help | — |
-| `mcp-hub --version` | Show version | — |
 
 ## Roadmap
 
@@ -151,21 +105,15 @@ Total findings: 3
 - [x] Security audit (secrets, permissions, versions, duplicates)
 - [x] Health checks (process detection)
 - [ ] Config sync between clients
-- [ ] Export/import configurations
-- [ ] Preset server bundles (web-dev, data, fullstack)
+- [ ] Export/import configurations (Git-friendly)
+- [ ] Preset server bundles (`mcp-hub preset install web-dev`)
 - [ ] Real-time log viewer
 - [ ] Resource monitoring (CPU/memory)
 
 ## Contributing
 
-Contributions welcome! Please open an issue first to discuss what you'd like to change.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions welcome. Open an issue first to discuss what you'd like to change.
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).

@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="460" viewBox="0 0 720 460">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;display=swap');
+      text { font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; }
+    </style>
+  </defs>
+  <!-- Terminal window -->
+  <rect width="720" height="460" rx="10" fill="#1a1b26"/>
+  <rect width="720" height="32" rx="10" fill="#24283b"/>
+  <rect y="22" width="720" height="10" fill="#24283b"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="16" r="6" fill="#f7768e"/>
+  <circle cx="40" cy="16" r="6" fill="#e0af68"/>
+  <circle cx="60" cy="16" r="6" fill="#9ece6a"/>
+  <!-- Title -->
+  <text x="360" y="21" text-anchor="middle" fill="#565f89" font-size="12">mcp-hub — ~/projects</text>
+  <!-- Tab bar -->
+  <rect x="16" y="44" width="688" height="28" rx="6" fill="#1e2030" stroke="#3b4261" stroke-width="1"/>
+  <rect x="20" y="48" width="80" height="20" rx="4" fill="#3b4261"/>
+  <text x="38" y="63" fill="#c0caf5" font-weight="700" font-size="12">Servers</text>
+  <text x="120" y="63" fill="#565f89" font-size="12">Audit</text>
+  <text x="170" y="63" fill="#565f89" font-size="12">Config</text>
+  <text x="232" y="63" fill="#565f89" font-size="12">Presets</text>
+  <text x="600" y="63" fill="#565f89" font-size="11">v0.1.0</text>
+  <!-- Server table header -->
+  <text x="30" y="98" fill="#bb9af7" font-weight="700" font-size="12">Name</text>
+  <text x="170" y="98" fill="#bb9af7" font-weight="700" font-size="12">Client</text>
+  <text x="310" y="98" fill="#bb9af7" font-weight="700" font-size="12">Status</text>
+  <text x="400" y="98" fill="#bb9af7" font-weight="700" font-size="12">Health</text>
+  <text x="500" y="98" fill="#bb9af7" font-weight="700" font-size="12">Command</text>
+  <line x1="20" y1="105" x2="700" y2="105" stroke="#3b4261" stroke-width="1"/>
+  <!-- Row 1: filesystem (selected) -->
+  <rect x="16" y="110" width="688" height="24" fill="#283457"/>
+  <text x="30" y="127" fill="#c0caf5" font-weight="700">filesystem</text>
+  <text x="170" y="127" fill="#7aa2f7">Claude Desktop</text>
+  <text x="310" y="127" fill="#9ece6a">&#x25cf; Active</text>
+  <text x="400" y="127" fill="#9ece6a">12ms</text>
+  <text x="500" y="127" fill="#565f89">npx -y @modelcontext...</text>
+  <!-- Row 2 -->
+  <text x="30" y="151" fill="#c0caf5">github</text>
+  <text x="170" y="151" fill="#7aa2f7">Claude Desktop</text>
+  <text x="310" y="151" fill="#9ece6a">&#x25cf; Active</text>
+  <text x="400" y="151" fill="#9ece6a">45ms</text>
+  <text x="500" y="151" fill="#565f89">npx -y @modelcontext...</text>
+  <!-- Row 3 -->
+  <text x="30" y="175" fill="#c0caf5">brave-search</text>
+  <text x="170" y="175" fill="#7aa2f7">Claude Desktop</text>
+  <text x="310" y="175" fill="#9ece6a">&#x25cf; Active</text>
+  <text x="400" y="175" fill="#e0af68">230ms</text>
+  <text x="500" y="175" fill="#565f89">npx -y @modelcontext...</text>
+  <!-- Row 4 -->
+  <text x="30" y="199" fill="#c0caf5">postgres</text>
+  <text x="170" y="199" fill="#7aa2f7">Cursor</text>
+  <text x="310" y="199" fill="#e0af68">&#x25cf; Slow</text>
+  <text x="400" y="199" fill="#e0af68">2.1s</text>
+  <text x="500" y="199" fill="#565f89">npx -y @modelcontext...</text>
+  <!-- Row 5 -->
+  <text x="30" y="223" fill="#c0caf5">playwright</text>
+  <text x="170" y="223" fill="#7aa2f7">Cursor</text>
+  <text x="310" y="223" fill="#9ece6a">&#x25cf; Active</text>
+  <text x="400" y="223" fill="#9ece6a">89ms</text>
+  <text x="500" y="223" fill="#565f89">npx -y @playwright/...</text>
+  <!-- Row 6 -->
+  <text x="30" y="247" fill="#c0caf5">figma</text>
+  <text x="170" y="247" fill="#7aa2f7">VS Code</text>
+  <text x="310" y="247" fill="#f7768e">&#x25cf; Down</text>
+  <text x="400" y="247" fill="#f7768e">--</text>
+  <text x="500" y="247" fill="#565f89">node figma-mcp/serv...</text>
+  <!-- Detail panel -->
+  <rect x="16" y="260" width="688" height="120" rx="6" fill="#1e2030" stroke="#3b4261" stroke-width="1"/>
+  <text x="30" y="280" fill="#bb9af7" font-weight="700" font-size="12">Detail: filesystem</text>
+  <text x="30" y="300" fill="#565f89">cmd:  </text><text x="72" y="300" fill="#c0caf5">npx -y @modelcontextprotocol/server-filesystem /</text>
+  <text x="30" y="318" fill="#565f89">env:  </text><text x="72" y="318" fill="#c0caf5">(none)</text>
+  <text x="30" y="336" fill="#565f89">from: </text><text x="72" y="336" fill="#7aa2f7">Claude Desktop</text>
+  <text x="30" y="354" fill="#565f89">audit:</text>
+  <text x="72" y="354" fill="#f7768e">&#x26a0; PERM_ROOT — unrestricted access to root filesystem</text>
+  <text x="30" y="372" fill="#565f89">      </text><text x="72" y="372" fill="#565f89">Fix: Restrict directory scope with a specific path</text>
+  <!-- Status bar -->
+  <rect x="16" y="392" width="688" height="28" rx="6" fill="#1e2030" stroke="#3b4261" stroke-width="1"/>
+  <text x="30" y="411" fill="#565f89" font-size="11">j/k: navigate  Tab: switch  q: quit    </text>
+  <text x="440" y="411" fill="#565f89" font-size="11">&#x25cf; 6 servers  &#x26a0; 3 warnings  &#x2714; healthy</text>
+  <!-- Command prompt -->
+  <text x="20" y="438" fill="#9ece6a">$</text>
+  <text x="34" y="438" fill="#c0caf5">mcp-hub</text>
+  <rect x="100" y="426" width="8" height="16" fill="#c0caf5" opacity="0.7">
+    <animate attributeName="opacity" values="0.7;0;0.7" dur="1.2s" repeatCount="indefinite"/>
+  </rect>
+</svg>

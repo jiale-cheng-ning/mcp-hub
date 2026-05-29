@@ -3,7 +3,6 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct RawServerConfig {
     command: Option<String>,
@@ -13,14 +12,12 @@ struct RawServerConfig {
     env: HashMap<String, String>,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct RawConfig {
-    #[serde(rename = "mcpServers")]
+    #[serde(rename = "mcpServers", default)]
     mcp_servers: HashMap<String, RawServerConfig>,
 }
 
-#[allow(dead_code)]
 pub fn parse_config(
     json: &str,
     client: ClientType,

@@ -1,3 +1,4 @@
+use crate::audit::rules::Severity;
 use crate::tui::app::App;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
@@ -19,10 +20,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let mut lines: Vec<Line> = Vec::new();
     for f in findings {
-        let (icon, _color) = match f.severity.as_str() {
-            "Critical" => ("🔴", Color::Red),
-            "Warning" => ("🟡", Color::Yellow),
-            _ => ("ℹ️", Color::Blue),
+        let (icon, _color) = match f.severity {
+            Severity::Critical => ("🔴", Color::Red),
+            Severity::Warning => ("🟡", Color::Yellow),
+            Severity::Info => ("ℹ️", Color::Blue),
         };
         lines.push(Line::from(vec![
             Span::raw(format!("{} ", icon)),

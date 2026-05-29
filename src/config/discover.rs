@@ -2,7 +2,6 @@ use crate::config::model::{ClientType, ServerEntry};
 use crate::config::parser::parse_config;
 use std::path::PathBuf;
 
-#[allow(dead_code)]
 pub fn known_config_paths() -> Vec<(ClientType, PathBuf)> {
     let mut paths = Vec::new();
 
@@ -30,7 +29,6 @@ pub fn known_config_paths() -> Vec<(ClientType, PathBuf)> {
     paths
 }
 
-#[allow(dead_code)]
 pub fn discover() -> Result<Vec<ServerEntry>, Box<dyn std::error::Error>> {
     let mut all_entries = Vec::new();
 
