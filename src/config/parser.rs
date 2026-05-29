@@ -33,7 +33,10 @@ pub fn parse_config(
         .map(|(name, cfg)| {
             let (command, status) = match cfg.command {
                 Some(cmd) => (cmd, ServerStatus::Active),
-                None => (String::new(), ServerStatus::ParseError("missing 'command' field".into())),
+                None => (
+                    String::new(),
+                    ServerStatus::ParseError("missing 'command' field".into()),
+                ),
             };
             ServerEntry {
                 name,
@@ -71,14 +74,18 @@ mod tests {
                 }
             }
         }"#;
-        let entries = parse_config(json, ClientType::ClaudeDesktop, PathBuf::from("/fake/path")).unwrap();
+        let entries =
+            parse_config(json, ClientType::ClaudeDesktop, PathBuf::from("/fake/path")).unwrap();
         assert_eq!(entries.len(), 2);
         // HashMap iteration order is not guaranteed, so find by name
         let fs = entries.iter().find(|e| e.name == "filesystem").unwrap();
         assert_eq!(fs.command, "npx");
         assert_eq!(fs.args.len(), 3);
         let gh = entries.iter().find(|e| e.name == "github").unwrap();
-        assert_eq!(gh.env.get("GITHUB_PERSONAL_ACCESS_TOKEN").unwrap(), "ghp_test123");
+        assert_eq!(
+            gh.env.get("GITHUB_PERSONAL_ACCESS_TOKEN").unwrap(),
+            "ghp_test123"
+        );
     }
 
     #[test]

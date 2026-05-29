@@ -14,11 +14,16 @@ pub fn known_config_paths() -> Vec<(ClientType, PathBuf)> {
     }
 
     if let Some(home) = dirs::home_dir() {
-        paths.push((ClientType::ClaudeCode, home.join(".claude").join("settings.json")));
+        paths.push((
+            ClientType::ClaudeCode,
+            home.join(".claude").join("settings.json"),
+        ));
         paths.push((ClientType::Cursor, home.join(".cursor").join("mcp.json")));
         paths.push((
             ClientType::Windsurf,
-            home.join(".codeium").join("windsurf").join("mcp_config.json"),
+            home.join(".codeium")
+                .join("windsurf")
+                .join("mcp_config.json"),
         ));
     }
 

@@ -5,9 +5,13 @@ use sysinfo::System;
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum HealthStatus {
-    Healthy { latency_ms: u64 },
+    Healthy {
+        latency_ms: u64,
+    },
     #[allow(dead_code)]
-    Slow { latency_ms: u64 },
+    Slow {
+        latency_ms: u64,
+    },
     Down,
     Unknown,
 }
@@ -42,7 +46,9 @@ pub fn check_process(server: &ServerEntry) -> HealthStatus {
     // For script runners (npx/node/python), check if server name appears in process args
     if server.command == "npx" || server.command == "node" || server.command == "python" {
         for process in sys.processes().values() {
-            let cmd_line: String = process.cmd().iter()
+            let cmd_line: String = process
+                .cmd()
+                .iter()
                 .map(|s| s.to_string_lossy().into_owned())
                 .collect::<Vec<_>>()
                 .join(" ");
@@ -82,7 +88,10 @@ mod tests {
 
     #[test]
     fn test_health_status_display() {
-        assert_eq!(format!("{}", HealthStatus::Healthy { latency_ms: 50 }), "OK (50ms)");
+        assert_eq!(
+            format!("{}", HealthStatus::Healthy { latency_ms: 50 }),
+            "OK (50ms)"
+        );
         assert_eq!(format!("{}", HealthStatus::Down), "DOWN");
         assert_eq!(format!("{}", HealthStatus::Unknown), "N/A");
     }

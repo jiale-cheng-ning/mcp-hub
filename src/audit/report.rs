@@ -7,8 +7,14 @@ pub fn print_report(findings: &[Finding]) {
         return;
     }
 
-    let critical: Vec<_> = findings.iter().filter(|f| f.severity == "Critical").collect();
-    let warnings: Vec<_> = findings.iter().filter(|f| f.severity == "Warning").collect();
+    let critical: Vec<_> = findings
+        .iter()
+        .filter(|f| f.severity == "Critical")
+        .collect();
+    let warnings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.severity == "Warning")
+        .collect();
     let info: Vec<_> = findings.iter().filter(|f| f.severity == "Info").collect();
 
     if !critical.is_empty() {

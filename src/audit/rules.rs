@@ -114,11 +114,16 @@ pub fn check_duplicates(servers: &[ServerEntry]) -> Vec<Finding> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use crate::config::model::{ClientType, ServerStatus};
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
-    fn make_server(name: &str, cmd: &str, args: Vec<&str>, env: HashMap<String, String>) -> ServerEntry {
+    fn make_server(
+        name: &str,
+        cmd: &str,
+        args: Vec<&str>,
+        env: HashMap<String, String>,
+    ) -> ServerEntry {
         ServerEntry {
             name: name.to_string(),
             command: cmd.to_string(),
@@ -133,7 +138,10 @@ mod tests {
     #[test]
     fn test_detect_plaintext_secret() {
         let mut env = HashMap::new();
-        env.insert("GITHUB_PERSONAL_ACCESS_TOKEN".to_string(), "ghp_abc123".to_string());
+        env.insert(
+            "GITHUB_PERSONAL_ACCESS_TOKEN".to_string(),
+            "ghp_abc123".to_string(),
+        );
         let server = make_server("github", "npx", vec![], env);
         let findings = check_env_secrets(&server);
         assert_eq!(findings.len(), 1);
@@ -151,21 +159,36 @@ mod tests {
 
     #[test]
     fn test_detect_unpinned_version() {
-        let server = make_server("github", "npx", vec!["-y", "@modelcontextprotocol/server-github"], HashMap::new());
+        let server = make_server(
+            "github",
+            "npx",
+            vec!["-y", "@modelcontextprotocol/server-github"],
+            HashMap::new(),
+        );
         let findings = check_version_pinning(&server);
         assert_eq!(findings.len(), 1);
     }
 
     #[test]
     fn test_pinned_version_no_finding() {
-        let server = make_server("github", "npx", vec!["-y", "@modelcontextprotocol/server-github@1.2.0"], HashMap::new());
+        let server = make_server(
+            "github",
+            "npx",
+            vec!["-y", "@modelcontextprotocol/server-github@1.2.0"],
+            HashMap::new(),
+        );
         let findings = check_version_pinning(&server);
         assert_eq!(findings.len(), 0);
     }
 
     #[test]
     fn test_detect_root_permission() {
-        let server = make_server("filesystem", "npx", vec!["-y", "@modelcontextprotocol/server-filesystem", "/"], HashMap::new());
+        let server = make_server(
+            "filesystem",
+            "npx",
+            vec!["-y", "@modelcontextprotocol/server-filesystem", "/"],
+            HashMap::new(),
+        );
         let findings = check_permissions(&server);
         assert!(!findings.is_empty());
     }
@@ -173,10 +196,20 @@ mod tests {
     #[test]
     fn test_detect_duplicate_servers() {
         let servers = vec![
-            make_server("github", "npx", vec!["-y", "@modelcontextprotocol/server-github"], HashMap::new()),
+            make_server(
+                "github",
+                "npx",
+                vec!["-y", "@modelcontextprotocol/server-github"],
+                HashMap::new(),
+            ),
             ServerEntry {
                 source_client: ClientType::Cursor,
-                ..make_server("github-cursor", "npx", vec!["-y", "@modelcontextprotocol/server-github"], HashMap::new())
+                ..make_server(
+                    "github-cursor",
+                    "npx",
+                    vec!["-y", "@modelcontextprotocol/server-github"],
+                    HashMap::new(),
+                )
             },
         ];
         let findings = check_duplicates(&servers);
