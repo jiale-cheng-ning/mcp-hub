@@ -1,0 +1,26 @@
+[
+  {
+    "package": "mcp-remote",
+    "cve": "CVE-2025-6514",
+    "affected": "<1.5.0",
+    "description": "Remote code execution via crafted server response"
+  },
+  {
+    "package": "@modelcontextprotocol/inspector",
+    "cve": "CVE-2025-49596",
+    "affected": "<2025-06-15",
+    "description": "RCE via web UI exposed endpoint"
+  },
+  {
+    "package": "create-mcp-server-stdio",
+    "cve": "CVE-2025-54994",
+    "affected": "*",
+    "description": "Template injection allowing file writes outside project directory"
+  },
+  {
+    "package": "mcp-server-postgress",
+    "cve": "NPM-ADVISORY-2025-MCP",
+    "affected": "*",
+    "description": "Typosquatted package — exfiltrates SSH keys and .env files"
+  }
+]

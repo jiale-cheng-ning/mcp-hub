@@ -41,7 +41,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     let help_text = match app.tab {
         Tab::Servers => "j/k: navigate  Tab: switch  q: quit",
-        Tab::Audit => "Tab: switch  q: quit",
+        Tab::Audit => "j/k: navigate  1/2/3: toggle filter  Tab: switch  g/G: top/bottom  q: quit",
     };
     let status = ratatui::widgets::Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Keys"))

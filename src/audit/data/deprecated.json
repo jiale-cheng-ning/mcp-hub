@@ -1,0 +1,14 @@
+[
+  {
+    "package": "@modelcontextprotocol/server-brave-search",
+    "replacement": "brave-search-mcp (use npx -y @anthropic-ai/brave-search-mcp)"
+  },
+  {
+    "package": "@modelcontextprotocol/server-notion",
+    "replacement": "Notion now provides an official MCP server"
+  },
+  {
+    "package": "@modelcontextprotocol/server-sequential-thinking",
+    "replacement": "Built into Claude Code natively"
+  }
+]
