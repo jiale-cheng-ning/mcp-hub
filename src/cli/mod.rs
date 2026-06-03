@@ -1,4 +1,7 @@
 mod audit_cmd;
+mod doctor_cmd;
+mod export_cmd;
+mod import_cmd;
 mod scan;
 
 use clap::{Parser, Subcommand};
@@ -31,6 +34,32 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Export all MCP server configs to a single JSON file
+    Export {
+        /// Output file path (default: mcp-hub.json)
+        #[arg(long, short)]
+        output: Option<String>,
+    },
+    /// Import MCP server configs from a JSON file
+    Import {
+        /// Path to the export file
+        file: String,
+        /// Target client (claude-desktop, claude-code, cursor, vscode, windsurf)
+        #[arg(long, short)]
+        target: Option<String>,
+    },
+    /// Check real MCP protocol connectivity for all servers
+    Doctor {
+        /// Check only a specific server
+        #[arg(long, short)]
+        server: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Connection timeout in seconds
+        #[arg(long, default_value = "5")]
+        timeout: u64,
+    },
 }
 
 pub fn run() {
@@ -41,6 +70,19 @@ pub fn run() {
         }
         Some(Commands::Audit { json }) => {
             audit_cmd::run(json);
+        }
+        Some(Commands::Export { output }) => {
+            export_cmd::run(output.as_deref());
+        }
+        Some(Commands::Import { file, target }) => {
+            import_cmd::run(&file, target.as_deref());
+        }
+        Some(Commands::Doctor {
+            server,
+            json,
+            timeout,
+        }) => {
+            doctor_cmd::run(server.as_deref(), json, timeout);
         }
         None => {
             let entries = crate::config::discover::discover().unwrap_or_else(|e| {

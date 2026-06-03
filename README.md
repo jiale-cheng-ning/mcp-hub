@@ -26,7 +26,8 @@ Some are broken. Some have security issues. You can't see them all at once.
 | **TUI Dashboard** | Interactive terminal UI — browse, inspect, and filter all MCP servers |
 | **Auto-Discovery** | Scans Claude Desktop, Claude Code, Cursor, Windsurf configs automatically |
 | **Security Audit** | **15 rules** — typosquatting, CVE detection, postinstall scripts, shell injection, secrets, and more |
-| **Health Checks** | Shows which servers are running and which are down |
+| **MCP Doctor** | Real MCP protocol health checks — spawns servers, validates handshake, counts tools |
+| **Export/Import** | Export configs to Git-friendly JSON, import to any client. Secrets auto-redacted. |
 | **Single Binary** | One Rust binary. No runtime. No dependencies. `cargo install` and go. |
 
 ## Install
@@ -50,6 +51,10 @@ mcp-hub scan         # List all servers in a table
 mcp-hub scan --json  # JSON output for scripting
 mcp-hub audit        # Run security audit
 mcp-hub audit --json # JSON output for CI pipelines
+mcp-hub doctor       # Check real MCP protocol connectivity
+mcp-hub doctor --json # JSON output for monitoring
+mcp-hub export       # Export all configs to mcp-hub.json (secrets redacted)
+mcp-hub import mcp-hub.json --target cursor  # Import configs to a client
 ```
 
 ### TUI keybindings
@@ -147,9 +152,9 @@ Total findings: 5
 - [x] Health checks (process detection)
 - [x] Severity-based filtering in TUI
 - [x] JSON output for CI integration
+- [x] Export/import configurations (Git-friendly, secrets auto-redacted)
+- [x] Real MCP protocol health checks (`mcp-hub doctor`)
 - [ ] Config sync between clients
-- [ ] Export/import configurations (Git-friendly)
-- [ ] Real MCP protocol health checks (connect and validate)
 - [ ] Server performance benchmarks
 - [ ] MCP Registry search and one-click install
 - [ ] Preset server bundles (`mcp-hub preset install web-dev`)
