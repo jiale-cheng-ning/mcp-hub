@@ -269,6 +269,160 @@ fn read_mcp_response<R: BufRead>(
     serde_json::from_slice(&body).map_err(|e| format!("invalid JSON: {}", e))
 }
 
+// ─── Benchmark support ───
+
+#[derive(Debug, Clone)]
+pub struct BenchResult {
+    pub server_name: String,
+    pub spawn_ms: u64,
+    pub init_ms: u64,
+    pub tools_list_ms: u64,
+    pub total_ms: u64,
+    pub tools_count: usize,
+    pub status: String,
+    pub error: Option<String>,
+}
+
+pub fn bench_server(
+    name: &str,
+    command: &str,
+    args: &[String],
+    env: &std::collections::HashMap<String, String>,
+    timeout: Duration,
+) -> BenchResult {
+    let total_start = Instant::now();
+    let fail = |msg: String| BenchResult {
+        server_name: name.to_string(),
+        spawn_ms: 0,
+        init_ms: 0,
+        tools_list_ms: 0,
+        total_ms: total_start.elapsed().as_millis() as u64,
+        tools_count: 0,
+        status: "failed".into(),
+        error: Some(msg),
+    };
+
+    // Spawn
+    let spawn_start = Instant::now();
+    let child = Command::new(command)
+        .args(args)
+        .envs(env)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
+    let spawn_ms = spawn_start.elapsed().as_millis() as u64;
+
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => return fail(format!("spawn: {}", e)),
+    };
+
+    // Initialize
+    let init_start = Instant::now();
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "mcp-hub", "version": "0.1.0"}
+        }
+    });
+    let stdin = child.stdin.as_mut().unwrap();
+    let msg = serde_json::to_string(&init_request).unwrap();
+    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
+    if stdin.write_all(frame.as_bytes()).is_err() {
+        let _ = child.kill();
+        return fail("write init failed".into());
+    }
+    let _ = stdin.flush();
+
+    let stdout = child.stdout.take().unwrap();
+    let mut reader = BufReader::new(stdout);
+
+    match read_mcp_response(&mut reader, timeout) {
+        Ok(resp) => {
+            if resp.get("error").is_some() {
+                let _ = child.kill();
+                let init_ms = init_start.elapsed().as_millis() as u64;
+                return BenchResult {
+                    server_name: name.to_string(),
+                    spawn_ms,
+                    init_ms,
+                    tools_list_ms: 0,
+                    total_ms: total_start.elapsed().as_millis() as u64,
+                    tools_count: 0,
+                    status: "init_error".into(),
+                    error: Some("initialize returned error".into()),
+                };
+            }
+        }
+        Err(e) => {
+            let _ = child.kill();
+            let init_ms = init_start.elapsed().as_millis() as u64;
+            return BenchResult {
+                server_name: name.to_string(),
+                spawn_ms,
+                init_ms,
+                tools_list_ms: 0,
+                total_ms: total_start.elapsed().as_millis() as u64,
+                tools_count: 0,
+                status: if e.contains("timeout") { "timeout" } else { "failed" }.into(),
+                error: Some(e),
+            };
+        }
+    }
+    let init_ms = init_start.elapsed().as_millis() as u64;
+
+    // Send initialized notification
+    let initialized = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+    });
+    let msg = serde_json::to_string(&initialized).unwrap();
+    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
+    let _ = stdin.write_all(frame.as_bytes());
+    let _ = stdin.flush();
+
+    // tools/list
+    let tools_start = Instant::now();
+    let tools_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list"
+    });
+    let msg = serde_json::to_string(&tools_request).unwrap();
+    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
+    let _ = stdin.write_all(frame.as_bytes());
+    let _ = stdin.flush();
+
+    let tools_count = match read_mcp_response(&mut reader, timeout) {
+        Ok(resp) => resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(|t| t.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0),
+        Err(_) => 0,
+    };
+    let tools_list_ms = tools_start.elapsed().as_millis() as u64;
+
+    let _ = child.kill();
+
+    BenchResult {
+        server_name: name.to_string(),
+        spawn_ms,
+        init_ms,
+        tools_list_ms,
+        total_ms: total_start.elapsed().as_millis() as u64,
+        tools_count,
+        status: "ok".into(),
+        error: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

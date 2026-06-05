@@ -27,6 +27,8 @@ Some are broken. Some have security issues. You can't see them all at once.
 | **Auto-Discovery** | Scans Claude Desktop, Claude Code, Cursor, Windsurf configs automatically |
 | **Security Audit** | **15 rules** — typosquatting, CVE detection, postinstall scripts, shell injection, secrets, and more |
 | **MCP Doctor** | Real MCP protocol health checks — spawns servers, validates handshake, counts tools |
+| **Benchmark** | Performance testing — spawn time, init latency, tools/list response time per server |
+| **Registry Search** | Search the official MCP Registry and install servers with one command |
 | **Export/Import** | Export configs to Git-friendly JSON, import to any client. Secrets auto-redacted. |
 | **Single Binary** | One Rust binary. No runtime. No dependencies. `cargo install` and go. |
 
@@ -53,6 +55,10 @@ mcp-hub audit        # Run security audit
 mcp-hub audit --json # JSON output for CI pipelines
 mcp-hub doctor       # Check real MCP protocol connectivity
 mcp-hub doctor --json # JSON output for monitoring
+mcp-hub bench        # Benchmark server performance (3 rounds)
+mcp-hub bench --rounds 5 --server github  # Custom benchmark
+mcp-hub search postgres                  # Search the MCP Registry
+mcp-hub search postgres --install --target cursor  # Search and install
 mcp-hub export       # Export all configs to mcp-hub.json (secrets redacted)
 mcp-hub import mcp-hub.json --target cursor  # Import configs to a client
 ```
@@ -154,9 +160,9 @@ Total findings: 5
 - [x] JSON output for CI integration
 - [x] Export/import configurations (Git-friendly, secrets auto-redacted)
 - [x] Real MCP protocol health checks (`mcp-hub doctor`)
+- [x] MCP Registry search and one-click install (`mcp-hub search`)
+- [x] Server performance benchmarks (`mcp-hub bench`)
 - [ ] Config sync between clients
-- [ ] Server performance benchmarks
-- [ ] MCP Registry search and one-click install
 - [ ] Preset server bundles (`mcp-hub preset install web-dev`)
 - [ ] Real-time log viewer
 - [ ] Resource monitoring (CPU/memory)
