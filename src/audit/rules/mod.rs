@@ -280,7 +280,7 @@ impl AuditRule for WorldReadableSecret {
         "Config file containing secrets has overly permissive permissions"
     }
     fn check(&self, ctx: &AuditContext) -> Vec<Finding> {
-        let findings = Vec::new();
+        let mut findings = Vec::new();
         let mut checked_paths = std::collections::HashSet::new();
 
         for server in ctx.servers {
@@ -427,7 +427,7 @@ impl AuditRule for ConfigFilePerms {
         "Config file permissions are not restricted to owner-only"
     }
     fn check(&self, ctx: &AuditContext) -> Vec<Finding> {
-        let findings = Vec::new();
+        let mut findings = Vec::new();
         let mut checked = std::collections::HashSet::new();
 
         for server in ctx.servers {
