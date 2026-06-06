@@ -23,7 +23,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // filter bar
-            Constraint::Min(0),   // findings list
+            Constraint::Min(0),    // findings list
         ])
         .split(area);
 
@@ -40,8 +40,11 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
             Style::default().fg(Color::DarkGray),
         ),
     ];
-    let filter_bar = Paragraph::new(Line::from(filter_text))
-        .block(Block::default().borders(Borders::ALL).title("Filter (toggle with 1/2/3)"));
+    let filter_bar = Paragraph::new(Line::from(filter_text)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Filter (toggle with 1/2/3)"),
+    );
     frame.render_widget(filter_bar, chunks[0]);
 
     // ─── Findings list ───
@@ -112,7 +115,10 @@ fn filter_chip<'a>(label: &'a str, active: bool, color: Color) -> Span<'a> {
     if active {
         Span::styled(
             format!(" [{}] ", label),
-            Style::default().fg(Color::Black).bg(color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Black)
+                .bg(color)
+                .add_modifier(Modifier::BOLD),
         )
     } else {
         Span::styled(

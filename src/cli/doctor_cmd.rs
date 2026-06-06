@@ -71,7 +71,8 @@ pub fn run(server_filter: Option<&str>, json: bool, timeout_secs: u64) {
     if json {
         let json_output: Vec<serde_json::Value> = results
             .iter()
-            .map(|r| {
+            .zip(filtered.iter())
+            .map(|(r, entry)| {
                 let status_str = match &r.status {
                     McpStatus::Healthy => "healthy",
                     McpStatus::ConnectionFailed(_) => "failed",
@@ -86,6 +87,7 @@ pub fn run(server_filter: Option<&str>, json: bool, timeout_secs: u64) {
                 };
                 let mut obj = serde_json::json!({
                     "server": r.server_name,
+                    "client": format!("{}", entry.source_client),
                     "status": status_str,
                     "tools_count": r.tools.len(),
                     "resources_count": r.resources.len(),
@@ -103,18 +105,35 @@ pub fn run(server_filter: Option<&str>, json: bool, timeout_secs: u64) {
                 obj
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&json_output).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json_output).unwrap_or_default()
+        );
     } else {
         // Summary
-        let healthy = results.iter().filter(|r| matches!(r.status, McpStatus::Healthy)).count();
+        let healthy = results
+            .iter()
+            .filter(|r| matches!(r.status, McpStatus::Healthy))
+            .count();
         let failed = results
             .iter()
-            .filter(|r| matches!(r.status, McpStatus::ConnectionFailed(_) | McpStatus::InvalidResponse(_)))
+            .filter(|r| {
+                matches!(
+                    r.status,
+                    McpStatus::ConnectionFailed(_) | McpStatus::InvalidResponse(_)
+                )
+            })
             .count();
-        let timeouts = results.iter().filter(|r| matches!(r.status, McpStatus::Timeout)).count();
+        let timeouts = results
+            .iter()
+            .filter(|r| matches!(r.status, McpStatus::Timeout))
+            .count();
         println!(
             "\nResult: {}/{} healthy, {} failed, {} timeout",
-            healthy, results.len(), failed, timeouts
+            healthy,
+            results.len(),
+            failed,
+            timeouts
         );
     }
 }
@@ -138,22 +157,13 @@ fn print_result(result: &mcp_check::McpCheckResult) {
             );
         }
         McpStatus::ConnectionFailed(msg) => {
-            println!(
-                "  {:<20} ✗ Connection failed: {}",
-                result.server_name, msg
-            );
+            println!("  {:<20} ✗ Connection failed: {}", result.server_name, msg);
         }
         McpStatus::Timeout => {
-            println!(
-                "  {:<20} ⚠ No MCP response (timeout)",
-                result.server_name
-            );
+            println!("  {:<20} ⚠ No MCP response (timeout)", result.server_name);
         }
         McpStatus::InvalidResponse(msg) => {
-            println!(
-                "  {:<20} ✗ Invalid response: {}",
-                result.server_name, msg
-            );
+            println!("  {:<20} ✗ Invalid response: {}", result.server_name, msg);
         }
     }
 }

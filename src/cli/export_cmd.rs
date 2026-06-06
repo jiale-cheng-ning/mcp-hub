@@ -47,7 +47,15 @@ fn count_secrets(servers: &[ServerEntry]) -> usize {
 
 fn has_secret_keyword(name: &str) -> bool {
     let upper = name.to_uppercase();
-    ["TOKEN", "KEY", "SECRET", "PASSWORD", "API_KEY", "ACCESS_KEY", "PRIVATE_KEY"]
-        .iter()
-        .any(|k| upper.contains(k))
+    [
+        "TOKEN",
+        "KEY",
+        "SECRET",
+        "PASSWORD",
+        "API_KEY",
+        "ACCESS_KEY",
+        "PRIVATE_KEY",
+    ]
+    .iter()
+    .any(|k| upper.contains(k))
 }

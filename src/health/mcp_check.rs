@@ -369,7 +369,12 @@ pub fn bench_server(
                 tools_list_ms: 0,
                 total_ms: total_start.elapsed().as_millis() as u64,
                 tools_count: 0,
-                status: if e.contains("timeout") { "timeout" } else { "failed" }.into(),
+                status: if e.contains("timeout") {
+                    "timeout"
+                } else {
+                    "failed"
+                }
+                .into(),
                 error: Some(e),
             };
         }
@@ -429,10 +434,7 @@ mod tests {
 
     #[test]
     fn test_mcp_status_display() {
-        assert_eq!(
-            format!("{}", McpStatus::Healthy),
-            "MCP handshake OK"
-        );
+        assert_eq!(format!("{}", McpStatus::Healthy), "MCP handshake OK");
         assert!(format!("{}", McpStatus::Timeout).contains("timeout"));
         assert!(format!("{}", McpStatus::ConnectionFailed("err".into())).contains("err"));
     }

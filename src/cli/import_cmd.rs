@@ -54,9 +54,8 @@ pub fn run(file: &str, target: Option<&str>) {
     // Read existing config or create empty
     let mut existing: serde_json::Value = if config_path.exists() {
         match std::fs::read_to_string(&config_path) {
-            Ok(content) => serde_json::from_str(&content).unwrap_or_else(|_| {
-                serde_json::json!({ "mcpServers": {} })
-            }),
+            Ok(content) => serde_json::from_str(&content)
+                .unwrap_or_else(|_| serde_json::json!({ "mcpServers": {} })),
             Err(_) => serde_json::json!({ "mcpServers": {} }),
         }
     } else {
@@ -102,7 +101,12 @@ pub fn run(file: &str, target: Option<&str>) {
     }
     match std::fs::write(&config_path, &output) {
         Ok(()) => {
-            println!("\nImported {} server(s) to {} ({})", imported, client, config_path.display());
+            println!(
+                "\nImported {} server(s) to {} ({})",
+                imported,
+                client,
+                config_path.display()
+            );
             if skipped > 0 {
                 println!("Skipped {} existing server(s)", skipped);
             }
@@ -118,15 +122,9 @@ fn get_config_path(client: &ClientType) -> Option<PathBuf> {
         ClientType::ClaudeDesktop => {
             dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
         }
-        ClientType::ClaudeCode => {
-            dirs::home_dir().map(|p| p.join(".claude").join("settings.json"))
-        }
-        ClientType::Cursor => {
-            dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json"))
-        }
-        ClientType::VSCode => {
-            dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json"))
-        }
+        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
+        ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
+        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
         ClientType::Windsurf => {
             dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
         }

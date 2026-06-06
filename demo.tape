@@ -1,31 +1,19 @@
 Output demo.gif
 Set FontSize 16
-Set Width 1200
-Set Height 800
-Set TypingSpeed 50ms
-Set Theme "Tokyo Night"
+Set Width 1000
+Set Height 500
+Set TypingSpeed 30ms
+Set PlaybackSpeed 1.0
+Set Theme "TokyoNight"
+
+Type "# mcp-hub - one TUI to manage all your MCP servers"
+Enter
+Sleep 500ms
 
 Type "mcp-hub scan"
 Enter
-Sleep 2s
+Sleep 2500ms
 
 Type "mcp-hub audit"
 Enter
-Sleep 3s
-
-Type "mcp-hub"
-Enter
-Sleep 1s
-
-Down
-Down
-Down
-Sleep 500ms
-
-Tab
-Sleep 2s
-
-Tab
-Sleep 1s
-
-Type "q"
+Sleep 3500ms

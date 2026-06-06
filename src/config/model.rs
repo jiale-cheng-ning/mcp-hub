@@ -27,7 +27,9 @@ impl std::fmt::Display for ClientType {
 impl ClientType {
     pub fn from_str_loose(s: &str) -> Option<ClientType> {
         match s.to_lowercase().as_str() {
-            "claude desktop" | "claudedesktop" | "claude-desktop" => Some(ClientType::ClaudeDesktop),
+            "claude desktop" | "claudedesktop" | "claude-desktop" => {
+                Some(ClientType::ClaudeDesktop)
+            }
             "claude code" | "claudecode" | "claude-code" => Some(ClientType::ClaudeCode),
             "cursor" => Some(ClientType::Cursor),
             "vscode" | "vs code" | "vs-code" | "visual studio code" => Some(ClientType::VSCode),
@@ -90,11 +92,12 @@ impl ExportData {
                 })
                 .collect();
             // Deduplicate: keep first occurrence
-            map.entry(server.name.clone()).or_insert_with(|| ExportedServer {
-                command: server.command.clone(),
-                args: server.args.clone(),
-                env: redacted_env,
-            });
+            map.entry(server.name.clone())
+                .or_insert_with(|| ExportedServer {
+                    command: server.command.clone(),
+                    args: server.args.clone(),
+                    env: redacted_env,
+                });
         }
         Self {
             version: 1,
@@ -108,11 +111,18 @@ impl ExportData {
         let mut mcp_servers = serde_json::Map::new();
         for (name, server) in &self.servers {
             let mut entry = serde_json::Map::new();
-            entry.insert("command".into(), serde_json::Value::String(server.command.clone()));
+            entry.insert(
+                "command".into(),
+                serde_json::Value::String(server.command.clone()),
+            );
             entry.insert(
                 "args".into(),
                 serde_json::Value::Array(
-                    server.args.iter().map(|a| serde_json::Value::String(a.clone())).collect(),
+                    server
+                        .args
+                        .iter()
+                        .map(|a| serde_json::Value::String(a.clone()))
+                        .collect(),
                 ),
             );
             if !server.env.is_empty() {
@@ -132,9 +142,17 @@ impl ExportData {
 
 fn has_secret_keyword(name: &str) -> bool {
     let upper = name.to_uppercase();
-    ["TOKEN", "KEY", "SECRET", "PASSWORD", "API_KEY", "ACCESS_KEY", "PRIVATE_KEY"]
-        .iter()
-        .any(|k| upper.contains(k))
+    [
+        "TOKEN",
+        "KEY",
+        "SECRET",
+        "PASSWORD",
+        "API_KEY",
+        "ACCESS_KEY",
+        "PRIVATE_KEY",
+    ]
+    .iter()
+    .any(|k| upper.contains(k))
 }
 
 fn chrono_now() -> String {
@@ -150,7 +168,12 @@ fn chrono_now() -> String {
 mod tests {
     use super::*;
 
-    fn make_server(name: &str, cmd: &str, args: Vec<&str>, env: HashMap<String, String>) -> ServerEntry {
+    fn make_server(
+        name: &str,
+        cmd: &str,
+        args: Vec<&str>,
+        env: HashMap<String, String>,
+    ) -> ServerEntry {
         ServerEntry {
             name: name.into(),
             command: cmd.into(),
@@ -210,9 +233,18 @@ mod tests {
 
     #[test]
     fn test_client_type_from_str_loose() {
-        assert_eq!(ClientType::from_str_loose("cursor"), Some(ClientType::Cursor));
-        assert_eq!(ClientType::from_str_loose("Claude Desktop"), Some(ClientType::ClaudeDesktop));
-        assert_eq!(ClientType::from_str_loose("claude-code"), Some(ClientType::ClaudeCode));
+        assert_eq!(
+            ClientType::from_str_loose("cursor"),
+            Some(ClientType::Cursor)
+        );
+        assert_eq!(
+            ClientType::from_str_loose("Claude Desktop"),
+            Some(ClientType::ClaudeDesktop)
+        );
+        assert_eq!(
+            ClientType::from_str_loose("claude-code"),
+            Some(ClientType::ClaudeCode)
+        );
         assert_eq!(ClientType::from_str_loose("unknown"), None);
     }
 }

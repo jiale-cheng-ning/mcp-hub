@@ -19,9 +19,9 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
     }
 
     for (i, server) in results.iter().enumerate() {
-        println!("  {}. {}", i + 1, server.name);
-        if !server.description.is_empty() {
-            println!("     {}", server.description);
+        println!("  {}. {}", i + 1, server.server.name);
+        if !server.server.description.is_empty() {
+            println!("     {}", server.server.description);
         }
         println!();
     }
@@ -48,7 +48,10 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
         None => {
             println!("\nNo --target specified. Available clients:");
             println!("  claude-desktop, claude-code, cursor, vscode, windsurf");
-            println!("\nUsage: mcp-hub search \"{}\" --install --target <client>", query);
+            println!(
+                "\nUsage: mcp-hub search \"{}\" --install --target <client>",
+                query
+            );
             return;
         }
     };
@@ -75,8 +78,8 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
     };
 
     // Get latest version info
-    println!("\nFetching latest version of {}...", chosen.name);
-    let version = match registry::get_latest(&chosen.name) {
+    println!("\nFetching latest version of {}...", chosen.server.name);
+    let version = match registry::get_latest(&chosen.server.name) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("Failed to get version info: {}", e);
@@ -101,15 +104,16 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
 
     println!(
         "Installing {} ({}) v{} to {}...",
-        chosen.name, pkg.identifier, version.version, target_client
+        chosen.server.name, pkg.identifier, version.version, target_client
     );
 
     // Generate config entry
     let server_name = chosen
+        .server
         .name
         .split('/')
         .next_back()
-        .unwrap_or(&chosen.name)
+        .unwrap_or(&chosen.server.name)
         .to_string();
 
     let config_path = match get_config_path(&target_client) {
@@ -140,20 +144,17 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
         .unwrap();
 
     if servers.contains_key(&server_name) {
-        println!("Server '{}' already exists in config. Skipping.", server_name);
+        println!(
+            "Server '{}' already exists in config. Skipping.",
+            server_name
+        );
         return;
     }
 
     // Build the server config
     let mut entry = serde_json::Map::new();
-    entry.insert(
-        "command".into(),
-        serde_json::Value::String("npx".into()),
-    );
-    entry.insert(
-        "args".into(),
-        serde_json::json!(["-y", pkg.identifier]),
-    );
+    entry.insert("command".into(), serde_json::Value::String("npx".into()));
+    entry.insert("args".into(), serde_json::json!(["-y", pkg.identifier]));
 
     servers.insert(server_name.clone(), serde_json::Value::Object(entry));
 
@@ -164,7 +165,12 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
     let output = serde_json::to_string_pretty(&existing).unwrap_or_default();
     match std::fs::write(&config_path, &output) {
         Ok(()) => {
-            println!("\n✓ Added '{}' to {} ({})", server_name, target_client, config_path.display());
+            println!(
+                "\n✓ Added '{}' to {} ({})",
+                server_name,
+                target_client,
+                config_path.display()
+            );
             println!("  command: npx -y {}", pkg.identifier);
             println!("\nRestart {} to load the new server.", target_client);
         }
@@ -179,15 +185,9 @@ fn get_config_path(client: &ClientType) -> Option<std::path::PathBuf> {
         ClientType::ClaudeDesktop => {
             dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
         }
-        ClientType::ClaudeCode => {
-            dirs::home_dir().map(|p| p.join(".claude").join("settings.json"))
-        }
-        ClientType::Cursor => {
-            dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json"))
-        }
-        ClientType::VSCode => {
-            dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json"))
-        }
+        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
+        ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
+        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
         ClientType::Windsurf => {
             dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
         }

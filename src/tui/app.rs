@@ -115,23 +115,20 @@ impl App {
             KeyCode::Char('1') => self.audit_filter.toggle(&Severity::Critical),
             KeyCode::Char('2') => self.audit_filter.toggle(&Severity::Warning),
             KeyCode::Char('3') => self.audit_filter.toggle(&Severity::Info),
-            KeyCode::Char('j') | KeyCode::Down
-                if !filtered.is_empty() => {
-                    self.audit_selected = (self.audit_selected + 1) % filtered.len();
-                }
-            KeyCode::Char('k') | KeyCode::Up
-                if !filtered.is_empty() => {
-                    self.audit_selected = if self.audit_selected == 0 {
-                        filtered.len() - 1
-                    } else {
-                        self.audit_selected - 1
-                    };
-                }
+            KeyCode::Char('j') | KeyCode::Down if !filtered.is_empty() => {
+                self.audit_selected = (self.audit_selected + 1) % filtered.len();
+            }
+            KeyCode::Char('k') | KeyCode::Up if !filtered.is_empty() => {
+                self.audit_selected = if self.audit_selected == 0 {
+                    filtered.len() - 1
+                } else {
+                    self.audit_selected - 1
+                };
+            }
             KeyCode::Char('g') => self.audit_selected = 0,
-            KeyCode::Char('G')
-                if !filtered.is_empty() => {
-                    self.audit_selected = filtered.len() - 1;
-                }
+            KeyCode::Char('G') if !filtered.is_empty() => {
+                self.audit_selected = filtered.len() - 1;
+            }
             _ => {}
         }
     }
