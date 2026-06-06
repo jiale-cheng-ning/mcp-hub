@@ -34,15 +34,26 @@ Some are broken. Some have security issues. You can't see them all at once.
 
 ## Install
 
-```bash
-# From GitHub (requires Rust)
-cargo install --git https://github.com/jiale-cheng-ning/mcp-hub
+### One-line install (recommended)
 
-# Or clone and build
-git clone https://github.com/jiale-cheng-ning/mcp-hub.git
-cd mcp-hub
-cargo build --release
-# binary: target/release/mcp-hub
+```bash
+# Linux / macOS
+curl -sSL https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/main/install.sh | sh
+
+# Windows (PowerShell)
+iwr -useb https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/main/install.ps1 | iex
+```
+
+### Download from GitHub Releases
+
+Prebuilt binaries for Linux, macOS (Intel + Apple Silicon), and Windows:
+
+**[Download latest release](https://github.com/jiale-cheng-ning/mcp-hub/releases/latest)**
+
+### From source (requires Rust)
+
+```bash
+cargo install --git https://github.com/jiale-cheng-ning/mcp-hub
 ```
 
 ## Usage
