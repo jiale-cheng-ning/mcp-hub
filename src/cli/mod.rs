@@ -3,6 +3,7 @@ mod bench_cmd;
 mod doctor_cmd;
 mod export_cmd;
 mod import_cmd;
+mod preset_cmd;
 mod scan;
 mod search_cmd;
 
@@ -91,6 +92,20 @@ enum Commands {
         #[arg(long, default_value = "5")]
         timeout: u64,
     },
+    /// Manage preset server bundles
+    Preset {
+        /// Subcommand: list or install
+        #[arg(default_value = "list")]
+        subcmd: String,
+        /// Preset name (for install)
+        name: Option<String>,
+        /// Target client for install
+        #[arg(long, short)]
+        target: Option<String>,
+        /// Output as JSON (for list)
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub fn run() {
@@ -130,6 +145,14 @@ pub fn run() {
             timeout,
         }) => {
             bench_cmd::run(server.as_deref(), rounds, json, timeout);
+        }
+        Some(Commands::Preset {
+            subcmd,
+            name,
+            target,
+            json,
+        }) => {
+            preset_cmd::run(&subcmd, name.as_deref(), target.as_deref(), json);
         }
         None => {
             let entries = crate::config::discover::discover().unwrap_or_else(|e| {

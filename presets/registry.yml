@@ -1,0 +1,74 @@
+# MCP Hub Preset Bundles
+# Each preset is a curated collection of MCP servers for a specific use case.
+# Install with: mcp-hub preset install <name> --target <client>
+
+presets:
+  minimal:
+    description: "Essential starter pack — filesystem access and GitHub integration"
+    servers:
+      filesystem:
+        package: "@modelcontextprotocol/server-filesystem"
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "~/projects"]
+      github:
+        package: "@modelcontextprotocol/server-github"
+        args: ["-y", "@modelcontextprotocol/server-github"]
+        env:
+          - GITHUB_PERSONAL_ACCESS_TOKEN
+
+  web-dev:
+    description: "Web development — filesystem, GitHub, browser automation, and search"
+    servers:
+      filesystem:
+        package: "@modelcontextprotocol/server-filesystem"
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "~/projects"]
+      github:
+        package: "@modelcontextprotocol/server-github"
+        args: ["-y", "@modelcontextprotocol/server-github"]
+        env:
+          - GITHUB_PERSONAL_ACCESS_TOKEN
+      playwright:
+        package: "@playwright/mcp"
+        args: ["-y", "@playwright/mcp"]
+      brave-search:
+        package: "@anthropic-ai/brave-search-mcp"
+        args: ["-y", "@anthropic-ai/brave-search-mcp"]
+        env:
+          - BRAVE_API_KEY
+
+  backend:
+    description: "Backend development — databases, Docker, and GitHub"
+    servers:
+      filesystem:
+        package: "@modelcontextprotocol/server-filesystem"
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "~/projects"]
+      github:
+        package: "@modelcontextprotocol/server-github"
+        args: ["-y", "@modelcontextprotocol/server-github"]
+        env:
+          - GITHUB_PERSONAL_ACCESS_TOKEN
+      postgres:
+        package: "@modelcontextprotocol/server-postgres"
+        args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+
+  fullstack:
+    description: "Full-stack development — everything in web-dev + backend databases"
+    servers:
+      filesystem:
+        package: "@modelcontextprotocol/server-filesystem"
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "~/projects"]
+      github:
+        package: "@modelcontextprotocol/server-github"
+        args: ["-y", "@modelcontextprotocol/server-github"]
+        env:
+          - GITHUB_PERSONAL_ACCESS_TOKEN
+      playwright:
+        package: "@playwright/mcp"
+        args: ["-y", "@playwright/mcp"]
+      brave-search:
+        package: "@anthropic-ai/brave-search-mcp"
+        args: ["-y", "@anthropic-ai/brave-search-mcp"]
+        env:
+          - BRAVE_API_KEY
+      postgres:
+        package: "@modelcontextprotocol/server-postgres"
+        args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]

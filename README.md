@@ -72,6 +72,8 @@ mcp-hub search postgres                  # Search the MCP Registry
 mcp-hub search postgres --install --target cursor  # Search and install
 mcp-hub export       # Export all configs to mcp-hub.json (secrets redacted)
 mcp-hub import mcp-hub.json --target cursor  # Import configs to a client
+mcp-hub preset list                  # Show available preset bundles
+mcp-hub preset install web-dev --target cursor  # Install a preset to a client
 ```
 
 ### TUI keybindings
@@ -152,6 +154,20 @@ mcp-hub import mcp-hub.json --target cursor  # Import configs to a client
 Total findings: 5
 ```
 
+## Preset bundles
+
+```bash
+mcp-hub preset list                           # See all presets
+mcp-hub preset install web-dev --target cursor # Install to Cursor
+```
+
+| Preset | Description | Servers |
+|--------|-------------|---------|
+| `minimal` | Starter pack | filesystem, github |
+| `web-dev` | Web development | filesystem, github, playwright, brave-search |
+| `backend` | Backend / API | filesystem, github, postgres |
+| `fullstack` | Everything | all of the above |
+
 ## Supported clients
 
 | Client | Config location |
@@ -173,6 +189,7 @@ Total findings: 5
 - [x] Real MCP protocol health checks (`mcp-hub doctor`)
 - [x] MCP Registry search and one-click install (`mcp-hub search`)
 - [x] Server performance benchmarks (`mcp-hub bench`)
+- [x] Preset server bundles (`mcp-hub preset install web-dev`)
 - [ ] Config sync between clients
 - [ ] Preset server bundles (`mcp-hub preset install web-dev`)
 - [ ] Real-time log viewer
