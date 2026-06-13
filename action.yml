@@ -1,0 +1,108 @@
+name: "MCP Hub Security Audit"
+description: "Audit MCP server configurations for security issues using mcp-hub"
+author: "jiale-cheng-ning"
+
+branding:
+  icon: "shield"
+  color: "orange"
+
+inputs:
+  config-path:
+    description: "Path to MCP config file (auto-detected if not set)"
+    required: false
+    default: ""
+  fail-on-critical:
+    description: "Fail the workflow if critical findings are detected"
+    required: false
+    default: "true"
+  fail-on-warning:
+    description: "Fail the workflow if warning findings are detected"
+    required: false
+    default: "false"
+  version:
+    description: "mcp-hub version to use (default: latest)"
+    required: false
+    default: "latest"
+
+outputs:
+  findings-count:
+    description: "Total number of findings"
+    value: ${{ steps.audit.outputs.findings-count }}
+  critical-count:
+    description: "Number of critical findings"
+    value: ${{ steps.audit.outputs.critical-count }}
+  report:
+    description: "Full audit report (JSON)"
+    value: ${{ steps.audit.outputs.report }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download mcp-hub
+      id: download
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          VERSION=$(gh release view --repo jiale-cheng-ning/mcp-hub --json tagName --jq '.tagName' 2>/dev/null || echo "v0.1.0")
+        fi
+
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64|amd64) ARCH="amd64" ;;
+          aarch64|arm64) ARCH="arm64" ;;
+        esac
+
+        if [ "$OS" = "mingw"* ] || [ "$OS" = "msys"* ] || [ "$OS" = "windows"* ]; then
+          BINARY="mcp-hub-windows-amd64.exe"
+        else
+          BINARY="mcp-hub-${OS}-${ARCH}"
+        fi
+
+        URL="https://github.com/jiale-cheng-ning/mcp-hub/releases/download/${VERSION}/${BINARY}"
+        echo "Downloading mcp-hub ${VERSION} for ${OS}-${ARCH}..."
+
+        curl -sSL "$URL" -o mcp-hub
+        chmod +x mcp-hub
+        echo "$(pwd)" >> $GITHUB_PATH
+
+    - name: Run audit
+      id: audit
+      shell: bash
+      run: |
+        CONFIG="${{ inputs.config-path }}"
+        if [ -n "$CONFIG" ]; then
+          export MCP_HUB_CONFIG="$CONFIG"
+        fi
+
+        echo "Running mcp-hub audit..."
+        REPORT=$(./mcp-hub audit --json 2>&1 || true)
+        echo "report=$REPORT" >> $GITHUB_OUTPUT
+
+        # Count findings
+        TOTAL=$(echo "$REPORT" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+        CRITICAL=$(echo "$REPORT" | python3 -c "import sys,json; print(sum(1 for f in json.load(sys.stdin) if f.get('severity')=='Critical'))" 2>/dev/null || echo "0")
+        WARNING=$(echo "$REPORT" | python3 -c "import sys,json; print(sum(1 for f in json.load(sys.stdin) if f.get('severity')=='Warning'))" 2>/dev/null || echo "0")
+
+        echo "findings-count=$TOTAL" >> $GITHUB_OUTPUT
+        echo "critical-count=$CRITICAL" >> $GITHUB_OUTPUT
+
+        # Print report
+        ./mcp-hub audit 2>&1 || true
+
+        # Fail if needed
+        FAIL_CRITICAL="${{ inputs.fail-on-critical }}"
+        FAIL_WARNING="${{ inputs.fail-on-warning }}"
+
+        if [ "$FAIL_CRITICAL" = "true" ] && [ "$CRITICAL" -gt 0 ]; then
+          echo "::error::Found $CRITICAL critical security issues in MCP configuration"
+          exit 1
+        fi
+
+        if [ "$FAIL_WARNING" = "true" ] && [ "$WARNING" -gt 0 ]; then
+          echo "::error::Found $WARNING warnings in MCP configuration"
+          exit 1
+        fi
+
+        echo "Audit passed: $TOTAL findings ($CRITICAL critical, $WARNING warnings)"

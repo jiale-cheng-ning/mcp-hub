@@ -168,6 +168,32 @@ mcp-hub preset install web-dev --target cursor # Install to Cursor
 | `backend` | Backend / API | filesystem, github, postgres |
 | `fullstack` | Everything | all of the above |
 
+## GitHub Action
+
+Audit MCP configs in CI — fail the build on security issues:
+
+```yaml
+# .github/workflows/mcp-audit.yml
+name: MCP Security Audit
+on: [push, pull_request]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiale-cheng-ning/mcp-hub@v0.1.0
+        with:
+          fail-on-critical: true
+```
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `fail-on-critical` | `true` | Fail if critical findings detected |
+| `fail-on-warning` | `false` | Fail if warnings detected |
+| `config-path` | auto | Custom config file path |
+| `version` | `latest` | mcp-hub version to use |
+
 ## Supported clients
 
 | Client | Config location |
@@ -191,7 +217,6 @@ mcp-hub preset install web-dev --target cursor # Install to Cursor
 - [x] Server performance benchmarks (`mcp-hub bench`)
 - [x] Preset server bundles (`mcp-hub preset install web-dev`)
 - [ ] Config sync between clients
-- [ ] Preset server bundles (`mcp-hub preset install web-dev`)
 - [ ] Real-time log viewer
 - [ ] Resource monitoring (CPU/memory)
 
