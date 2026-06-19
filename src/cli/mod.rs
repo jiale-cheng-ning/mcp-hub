@@ -6,6 +6,7 @@ mod import_cmd;
 mod preset_cmd;
 mod scan;
 mod search_cmd;
+mod sync_cmd;
 
 use clap::{Parser, Subcommand};
 
@@ -106,6 +107,18 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Sync MCP server configs between clients
+    Sync {
+        /// Source client (claude-desktop, claude-code, cursor, vscode, windsurf)
+        #[arg(long)]
+        from: String,
+        /// Target client
+        #[arg(long, short)]
+        to: String,
+        /// Show what would be synced without writing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 pub fn run() {
@@ -153,6 +166,9 @@ pub fn run() {
             json,
         }) => {
             preset_cmd::run(&subcmd, name.as_deref(), target.as_deref(), json);
+        }
+        Some(Commands::Sync { from, to, dry_run }) => {
+            sync_cmd::run(&from, &to, dry_run);
         }
         None => {
             let entries = crate::config::discover::discover().unwrap_or_else(|e| {

@@ -74,6 +74,7 @@ mcp-hub export       # Export all configs to mcp-hub.json (secrets redacted)
 mcp-hub import mcp-hub.json --target cursor  # Import configs to a client
 mcp-hub preset list                  # Show available preset bundles
 mcp-hub preset install web-dev --target cursor  # Install a preset to a client
+mcp-hub sync --from claude-desktop --to cursor  # Sync configs between clients
 ```
 
 ### TUI keybindings
@@ -216,7 +217,7 @@ jobs:
 - [x] MCP Registry search and one-click install (`mcp-hub search`)
 - [x] Server performance benchmarks (`mcp-hub bench`)
 - [x] Preset server bundles (`mcp-hub preset install web-dev`)
-- [ ] Config sync between clients
+- [x] Config sync between clients (`mcp-hub sync --from claude-desktop --to cursor`)
 - [ ] Real-time log viewer
 - [ ] Resource monitoring (CPU/memory)
 
