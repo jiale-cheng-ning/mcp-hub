@@ -95,17 +95,8 @@ enum Commands {
     },
     /// Manage preset server bundles
     Preset {
-        /// Subcommand: list or install
-        #[arg(default_value = "list")]
-        subcmd: String,
-        /// Preset name (for install)
-        name: Option<String>,
-        /// Target client for install
-        #[arg(long, short)]
-        target: Option<String>,
-        /// Output as JSON (for list)
-        #[arg(long)]
-        json: bool,
+        #[command(subcommand)]
+        action: PresetAction,
     },
     /// Sync MCP server configs between clients
     Sync {
@@ -118,6 +109,24 @@ enum Commands {
         /// Show what would be synced without writing
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum PresetAction {
+    /// List available presets
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install a preset to a client
+    Install {
+        /// Preset name (e.g. minimal, web-dev, backend, fullstack)
+        name: String,
+        /// Target client (claude-desktop, claude-code, cursor, vscode, windsurf)
+        #[arg(long, short)]
+        target: Option<String>,
     },
 }
 
@@ -159,14 +168,14 @@ pub fn run() {
         }) => {
             bench_cmd::run(server.as_deref(), rounds, json, timeout);
         }
-        Some(Commands::Preset {
-            subcmd,
-            name,
-            target,
-            json,
-        }) => {
-            preset_cmd::run(&subcmd, name.as_deref(), target.as_deref(), json);
-        }
+        Some(Commands::Preset { action }) => match action {
+            PresetAction::List { json } => {
+                preset_cmd::run("list", None, None, json);
+            }
+            PresetAction::Install { name, target } => {
+                preset_cmd::run("install", Some(&name), target.as_deref(), false);
+            }
+        },
         Some(Commands::Sync { from, to, dry_run }) => {
             sync_cmd::run(&from, &to, dry_run);
         }

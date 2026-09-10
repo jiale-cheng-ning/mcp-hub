@@ -1,6 +1,6 @@
+use crate::config::discover::config_path_for;
 use crate::config::model::ClientType;
 use crate::config::parser::parse_config;
-use std::path::PathBuf;
 
 pub fn run(from: &str, to: &str, dry_run: bool) {
     let from_client = match ClientType::from_str_loose(from) {
@@ -31,7 +31,7 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
     }
 
     // Read source config
-    let from_path = match get_config_path(&from_client) {
+    let from_path = match config_path_for(&from_client) {
         Some(p) => p,
         None => {
             eprintln!("Could not determine config path for {}", from_client);
@@ -66,7 +66,7 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
     }
 
     // Read target config
-    let to_path = match get_config_path(&to_client) {
+    let to_path = match config_path_for(&to_client) {
         Some(p) => p,
         None => {
             eprintln!("Could not determine config path for {}", to_client);
@@ -157,20 +157,6 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
         }
         Err(e) => {
             eprintln!("Failed to write config: {}", e);
-        }
-    }
-}
-
-fn get_config_path(client: &ClientType) -> Option<PathBuf> {
-    match client {
-        ClientType::ClaudeDesktop => {
-            dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
-        }
-        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
-        ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
-        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
-        ClientType::Windsurf => {
-            dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
         }
     }
 }

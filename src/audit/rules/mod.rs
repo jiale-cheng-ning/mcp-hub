@@ -40,7 +40,7 @@ pub struct AuditContext<'a> {
 }
 
 #[allow(dead_code)]
-pub trait AuditRule {
+pub trait AuditRule: Send + Sync {
     fn id(&self) -> &str;
     fn severity(&self) -> Severity;
     fn description(&self) -> &str;
@@ -118,26 +118,28 @@ pub fn load_all_data() -> (KnownServersData, CveDatabase, DeprecatedData) {
 
 // ─── Rule registry ───
 
-pub fn all_rules() -> Vec<Box<dyn AuditRule>> {
-    vec![
-        // Existing rules (refactored)
-        Box::new(EnvPlaintextSecret),
-        Box::new(WorldReadableSecret),
-        Box::new(PermRoot),
-        Box::new(PermHome),
-        Box::new(ConfigFilePerms),
-        Box::new(NoVersionPin),
-        Box::new(DuplicateServer),
-        // New rules
-        Box::new(Typosquatting),
-        Box::new(PostinstallScript),
-        Box::new(KnownCve),
-        Box::new(DeprecatedServer),
-        Box::new(DangerousCommand),
-        Box::new(ShellInjection),
-        Box::new(LatestVersion),
-        Box::new(LicenseRisk),
-    ]
+pub fn all_rules() -> &'static [Box<dyn AuditRule + Send + Sync>] {
+    use std::sync::OnceLock;
+    static RULES: OnceLock<Vec<Box<dyn AuditRule + Send + Sync>>> = OnceLock::new();
+    RULES.get_or_init(|| {
+        vec![
+            Box::new(EnvPlaintextSecret),
+            Box::new(WorldReadableSecret),
+            Box::new(PermRoot),
+            Box::new(PermHome),
+            Box::new(ConfigFilePerms),
+            Box::new(NoVersionPin),
+            Box::new(DuplicateServer),
+            Box::new(Typosquatting),
+            Box::new(PostinstallScript),
+            Box::new(KnownCve),
+            Box::new(DeprecatedServer),
+            Box::new(DangerousCommand),
+            Box::new(ShellInjection),
+            Box::new(LatestVersion),
+            Box::new(LicenseRisk),
+        ]
+    })
 }
 
 // ─── Helpers ───
@@ -384,6 +386,7 @@ impl AuditRule for PermHome {
         "Filesystem servers with unrestricted home directory access"
     }
     fn check(&self, ctx: &AuditContext) -> Vec<Finding> {
+        let home_patterns = ["~", "$HOME", "%USERPROFILE%", "%HOMEPATH%", "%HOME%"];
         ctx.servers
             .iter()
             .flat_map(|server| {
@@ -392,7 +395,12 @@ impl AuditRule for PermHome {
                     .iter()
                     .filter_map(|arg| {
                         let trimmed = arg.trim();
-                        if trimmed == "~" || trimmed == "$HOME" {
+                        let is_home = home_patterns.iter().any(|p| trimmed.eq_ignore_ascii_case(p))
+                            || trimmed.starts_with("~/")
+                            || trimmed.starts_with("~\\")
+                            || (trimmed.len() >= 10
+                                && trimmed[..10].eq_ignore_ascii_case("C:\\Users\\"));
+                        if is_home {
                             Some(Finding {
                                 rule_id: self.id().into(),
                                 severity: self.severity(),
@@ -737,23 +745,28 @@ impl AuditRule for DeprecatedServer {
 
 struct DangerousCommand;
 
-fn dangerous_patterns() -> &'static [(regex::Regex, &'static str)] {
-    use std::sync::OnceLock;
-    static PATTERNS: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
-    PATTERNS.get_or_init(|| {
-        [
-            (r"curl.*\|.*bash", "piped curl to bash"),
-            (r"curl.*\|.*sh", "piped curl to sh"),
-            (r"wget.*\|.*bash", "piped wget to bash"),
-            (r"rm\s+-rf", "recursive force delete"),
-            (r"eval\s", "eval command"),
-            (r"exec\s", "exec command"),
-            (r"chmod\s+777", "world-writable permissions"),
-        ]
-        .iter()
-        .filter_map(|(p, d)| Some((regex::Regex::new(p).ok()?, *d)))
-        .collect()
-    })
+type DangerousPattern = (fn(&str) -> bool, &'static str);
+
+fn dangerous_patterns() -> &'static [DangerousPattern] {
+    &[
+        (
+            |s: &str| {
+                (s.contains("curl") && s.contains("|") && s.contains("bash"))
+                    || (s.contains("curl") && s.contains("|") && s.contains("sh"))
+            },
+            "piped curl to shell",
+        ),
+        (
+            |s: &str| {
+                (s.contains("wget") && s.contains("|") && s.contains("bash"))
+                    || (s.contains("wget") && s.contains("|") && s.contains("sh"))
+            },
+            "piped wget to shell",
+        ),
+        (|s: &str| s.contains("rm -rf") || s.contains("rm -fr"), "recursive force delete"),
+        (|s: &str| s.contains("eval "), "eval command"),
+        (|s: &str| s.contains("chmod 777"), "world-writable permissions"),
+    ]
 }
 
 impl AuditRule for DangerousCommand {
@@ -773,8 +786,8 @@ impl AuditRule for DangerousCommand {
                 let args_str = server.args.join(" ");
                 dangerous_patterns()
                     .iter()
-                    .filter_map(|(re, desc)| {
-                        if re.is_match(&args_str) {
+                    .filter_map(|(matcher, desc)| {
+                        if matcher(&args_str) {
                             Some(Finding {
                                 rule_id: self.id().into(),
                                 severity: self.severity(),

@@ -101,7 +101,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .title(format!(
-                    "Security Audit — {} findings (j/k: navigate, g/G: top/bottom)",
+                    "Security Audit — {} findings (j/k: navigate, Enter: jump to server)",
                     filtered.len()
                 ))
                 .border_style(Style::default().fg(Color::DarkGray)),

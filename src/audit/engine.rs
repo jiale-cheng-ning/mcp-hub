@@ -9,10 +9,9 @@ pub fn run_audit(servers: &[crate::config::model::ServerEntry]) -> Vec<Finding> 
         deprecated: &dep,
     };
 
-    let rules = all_rules();
     let mut all_findings: Vec<Finding> = Vec::new();
 
-    for rule in &rules {
+    for rule in all_rules() {
         all_findings.extend(rule.check(&ctx));
     }
 

@@ -31,41 +31,52 @@ pub fn run(server_filter: Option<&str>, json: bool, timeout_secs: u64) {
     }
 
     let timeout = Duration::from_secs(timeout_secs);
-    let mut results = Vec::new();
 
     if !json {
         println!("Checking {} MCP server(s)...\n", filtered.len());
     }
 
-    for server in &filtered {
-        // Skip servers with parse errors or missing commands
-        if matches!(server.status, ServerStatus::ParseError(_)) || server.command.is_empty() {
-            let result = mcp_check::McpCheckResult {
-                server_name: server.name.clone(),
-                status: McpStatus::ConnectionFailed("invalid config".into()),
-                tools: vec![],
-                resources: vec![],
-                latency_ms: 0,
-            };
-            if !json {
-                print_result(&result);
-            }
-            results.push(result);
-            continue;
-        }
+    // Run all checks in parallel threads
+    let handles: Vec<_> = filtered
+        .iter()
+        .map(|server| {
+            let name = server.name.clone();
+            let command = server.command.clone();
+            let args = server.args.clone();
+            let env = server.env.clone();
+            let status_err = matches!(server.status, ServerStatus::ParseError(_));
+            let is_empty_cmd = command.is_empty();
 
-        let result = mcp_check::check_server(
-            &server.name,
-            &server.command,
-            &server.args,
-            &server.env,
-            timeout,
-        );
+            std::thread::spawn(move || {
+                if status_err || is_empty_cmd {
+                    return mcp_check::McpCheckResult {
+                        server_name: name,
+                        status: McpStatus::ConnectionFailed("invalid config".into()),
+                        tools: vec![],
+                        resources: vec![],
+                        latency_ms: 0,
+                    };
+                }
+                mcp_check::check_server(&name, &command, &args, &env, timeout)
+            })
+        })
+        .collect();
 
-        if !json {
-            print_result(&result);
+    let results: Vec<mcp_check::McpCheckResult> = handles
+        .into_iter()
+        .map(|h| h.join().unwrap_or_else(|_| mcp_check::McpCheckResult {
+            server_name: "unknown".into(),
+            status: McpStatus::ConnectionFailed("thread panicked".into()),
+            tools: vec![],
+            resources: vec![],
+            latency_ms: 0,
+        }))
+        .collect();
+
+    if !json {
+        for result in &results {
+            print_result(result);
         }
-        results.push(result);
     }
 
     if json {
@@ -110,7 +121,6 @@ pub fn run(server_filter: Option<&str>, json: bool, timeout_secs: u64) {
             serde_json::to_string_pretty(&json_output).unwrap_or_default()
         );
     } else {
-        // Summary
         let healthy = results
             .iter()
             .filter(|r| matches!(r.status, McpStatus::Healthy))

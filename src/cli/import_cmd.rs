@@ -1,5 +1,5 @@
+use crate::config::discover::config_path_for;
 use crate::config::model::{ClientType, ExportData};
-use std::path::PathBuf;
 
 pub fn run(file: &str, target: Option<&str>) {
     let content = match std::fs::read_to_string(file) {
@@ -42,7 +42,7 @@ pub fn run(file: &str, target: Option<&str>) {
     };
 
     // Get config path for target client
-    let config_path = get_config_path(&client);
+    let config_path = config_path_for(&client);
     let config_path = match config_path {
         Some(p) => p,
         None => {
@@ -117,16 +117,4 @@ pub fn run(file: &str, target: Option<&str>) {
     }
 }
 
-fn get_config_path(client: &ClientType) -> Option<PathBuf> {
-    match client {
-        ClientType::ClaudeDesktop => {
-            dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
-        }
-        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
-        ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
-        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
-        ClientType::Windsurf => {
-            dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
-        }
-    }
-}
+

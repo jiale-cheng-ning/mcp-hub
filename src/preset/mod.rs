@@ -24,8 +24,8 @@ pub struct PresetServer {
 
 /// Load the built-in preset registry.
 pub fn load_registry() -> Result<PresetRegistry, String> {
-    let yaml = include_str!("../../presets/registry.yml");
-    serde_yaml::from_str(yaml).map_err(|e| format!("Failed to parse presets: {}", e))
+    let json = include_str!("../../presets/registry.json");
+    serde_json::from_str(json).map_err(|e| format!("Failed to parse presets: {}", e))
 }
 
 /// Get a preset by name.

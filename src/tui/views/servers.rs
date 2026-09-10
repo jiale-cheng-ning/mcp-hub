@@ -9,6 +9,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
 
+    let filtered_indices = app.filtered_server_indices();
+
     let header = Row::new(vec![
         Cell::from("Name"),
         Cell::from("Client"),
@@ -21,11 +23,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
             .add_modifier(Modifier::BOLD),
     );
 
-    let rows: Vec<Row> = app
-        .servers
+    let rows: Vec<Row> = filtered_indices
         .iter()
-        .enumerate()
-        .map(|(i, s)| {
+        .map(|&i| {
+            let s = &app.servers[i];
             let status_str = match &s.status {
                 ServerStatus::Active => "🟢 Active",
                 ServerStatus::Disabled => "⏸  Disabled",
@@ -46,6 +47,20 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
+    // Title shows search state
+    let title = if app.search_mode {
+        format!("Servers — searching: {}▌", app.search_query)
+    } else if !app.search_query.is_empty() {
+        format!(
+            "Servers — filter '{}' ({} of {}, Esc to clear)",
+            app.search_query,
+            filtered_indices.len(),
+            app.servers.len()
+        )
+    } else {
+        format!("Servers ({})  / to search", app.servers.len())
+    };
+
     let table = Table::new(
         rows,
         [
@@ -56,7 +71,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).title("Servers"));
+    .block(Block::default().borders(Borders::ALL).title(title));
 
     frame.render_widget(table, chunks[0]);
 

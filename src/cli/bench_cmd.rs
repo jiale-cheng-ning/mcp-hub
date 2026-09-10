@@ -40,32 +40,42 @@ pub fn run(server_filter: Option<&str>, rounds: usize, json: bool, timeout_secs:
         );
     }
 
-    let mut all_results: Vec<Vec<BenchResult>> = Vec::new();
+    // Run all servers in parallel threads
+    let handles: Vec<_> = filtered
+        .iter()
+        .map(|server| {
+            let name = server.name.clone();
+            let command = server.command.clone();
+            let args = server.args.clone();
+            let env = server.env.clone();
+            let status_err = matches!(server.status, ServerStatus::ParseError(_));
+            let is_empty_cmd = command.is_empty();
 
-    for server in &filtered {
-        if matches!(server.status, ServerStatus::ParseError(_)) || server.command.is_empty() {
-            if !json {
-                println!("  {:<20} — SKIPPED (invalid config)", server.name);
-            }
-            continue;
-        }
+            std::thread::spawn(move || {
+                if status_err || is_empty_cmd {
+                    return Vec::new();
+                }
+                let mut server_rounds = Vec::new();
+                for _ in 0..rounds {
+                    let result =
+                        mcp_check::bench_server(&name, &command, &args, &env, timeout);
+                    server_rounds.push(result);
+                }
+                server_rounds
+            })
+        })
+        .collect();
 
-        let mut server_rounds = Vec::new();
-        for _ in 0..rounds {
-            let result = mcp_check::bench_server(
-                &server.name,
-                &server.command,
-                &server.args,
-                &server.env,
-                timeout,
-            );
-            server_rounds.push(result);
-        }
+    let all_results: Vec<Vec<BenchResult>> = handles
+        .into_iter()
+        .map(|h| h.join().unwrap_or_default())
+        .filter(|r| !r.is_empty())
+        .collect();
 
-        if !json {
-            print_bench_result(&server_rounds);
+    if !json {
+        for server_rounds in &all_results {
+            print_bench_result(server_rounds);
         }
-        all_results.push(server_rounds);
     }
 
     if json {

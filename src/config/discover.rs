@@ -2,31 +2,33 @@ use crate::config::model::{ClientType, ServerEntry};
 use crate::config::parser::parse_config;
 use std::path::PathBuf;
 
+/// Return the config file path for a given client type.
+pub fn config_path_for(client: &ClientType) -> Option<PathBuf> {
+    match client {
+        ClientType::ClaudeDesktop => {
+            dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
+        }
+        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
+        ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
+        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
+        ClientType::Windsurf => {
+            dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
+        }
+    }
+}
+
 pub fn known_config_paths() -> Vec<(ClientType, PathBuf)> {
-    let mut paths = Vec::new();
-
-    if let Some(app_data) = dirs::config_dir() {
-        paths.push((
-            ClientType::ClaudeDesktop,
-            app_data.join("Claude").join("claude_desktop_config.json"),
-        ));
-    }
-
-    if let Some(home) = dirs::home_dir() {
-        paths.push((
-            ClientType::ClaudeCode,
-            home.join(".claude").join("settings.json"),
-        ));
-        paths.push((ClientType::Cursor, home.join(".cursor").join("mcp.json")));
-        paths.push((
-            ClientType::Windsurf,
-            home.join(".codeium")
-                .join("windsurf")
-                .join("mcp_config.json"),
-        ));
-    }
-
-    paths
+    let clients = [
+        ClientType::ClaudeDesktop,
+        ClientType::ClaudeCode,
+        ClientType::Cursor,
+        ClientType::VSCode,
+        ClientType::Windsurf,
+    ];
+    clients
+        .iter()
+        .filter_map(|c| config_path_for(c).map(|p| (c.clone(), p)))
+        .collect()
 }
 
 pub fn discover() -> Result<Vec<ServerEntry>, Box<dyn std::error::Error>> {

@@ -1,3 +1,4 @@
+use crate::config::discover::config_path_for;
 use crate::config::model::ClientType;
 use crate::registry;
 use std::io::{self, Write};
@@ -116,7 +117,7 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
         .unwrap_or(&chosen.server.name)
         .to_string();
 
-    let config_path = match get_config_path(&target_client) {
+    let config_path = match config_path_for(&target_client) {
         Some(p) => p,
         None => {
             eprintln!("Could not determine config path for {}", target_client);
@@ -180,16 +181,4 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
     }
 }
 
-fn get_config_path(client: &ClientType) -> Option<std::path::PathBuf> {
-    match client {
-        ClientType::ClaudeDesktop => {
-            dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
-        }
-        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
-        ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
-        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
-        ClientType::Windsurf => {
-            dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
-        }
-    }
-}
+

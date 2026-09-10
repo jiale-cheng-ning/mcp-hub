@@ -39,7 +39,7 @@ pub fn check_process(server: &ServerEntry) -> HealthStatus {
     for process in sys.processes().values() {
         let proc_name = process.name().to_string_lossy();
         if proc_name.contains(cmd_name) || proc_name == cmd_name {
-            return HealthStatus::Unknown;
+            return HealthStatus::Healthy { latency_ms: 0 };
         }
     }
 
@@ -53,7 +53,7 @@ pub fn check_process(server: &ServerEntry) -> HealthStatus {
                 .collect::<Vec<_>>()
                 .join(" ");
             if cmd_line.contains(&server.name) {
-                return HealthStatus::Unknown;
+                return HealthStatus::Healthy { latency_ms: 0 };
             }
         }
     }

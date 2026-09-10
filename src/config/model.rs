@@ -140,7 +140,7 @@ impl ExportData {
     }
 }
 
-fn has_secret_keyword(name: &str) -> bool {
+pub fn has_secret_keyword(name: &str) -> bool {
     let upper = name.to_uppercase();
     [
         "TOKEN",

@@ -1,5 +1,5 @@
 use crate::config::discover::discover;
-use crate::config::model::{ExportData, ServerEntry};
+use crate::config::model::{has_secret_keyword, ExportData, ServerEntry};
 
 pub fn run(output: Option<&str>) {
     let entries = discover().unwrap_or_else(|e| {
@@ -43,19 +43,4 @@ fn count_secrets(servers: &[ServerEntry]) -> usize {
         .flat_map(|s| s.env.iter())
         .filter(|(k, _)| has_secret_keyword(k))
         .count()
-}
-
-fn has_secret_keyword(name: &str) -> bool {
-    let upper = name.to_uppercase();
-    [
-        "TOKEN",
-        "KEY",
-        "SECRET",
-        "PASSWORD",
-        "API_KEY",
-        "ACCESS_KEY",
-        "PRIVATE_KEY",
-    ]
-    .iter()
-    .any(|k| upper.contains(k))
 }

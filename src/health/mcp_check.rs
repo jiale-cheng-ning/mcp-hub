@@ -1,6 +1,63 @@
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
+
+/// Kill a child process and wait for it to reap (avoids zombies on Unix).
+fn kill_and_reap(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Spawn a reader thread that sends each non-empty line over a channel.
+fn spawn_line_reader(
+    stdout: std::process::ChildStdout,
+) -> (
+    mpsc::Receiver<Result<String, String>>,
+    thread::JoinHandle<()>,
+) {
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => {
+                    let _ = tx.send(Err("EOF".into()));
+                    break;
+                }
+                Ok(_) => {
+                    let trimmed = line.trim().to_string();
+                    if !trimmed.is_empty() && tx.send(Ok(trimmed)).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(format!("read error: {}", e)));
+                    break;
+                }
+            }
+        }
+    });
+    (rx, handle)
+}
+
+/// Receive the next JSON-RPC response with a real timeout.
+fn recv_mcp_response(
+    rx: &mpsc::Receiver<Result<String, String>>,
+    timeout: Duration,
+) -> Result<serde_json::Value, String> {
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(line)) => serde_json::from_str(&line).map_err(|e| format!("invalid JSON: {}", e)),
+        Ok(Err(e)) => Err(e),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err("timeout".into()),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err("channel closed".into()),
+    }
+}
+
+// ─── Types ───
 
 #[derive(Debug)]
 pub struct McpCheckResult {
@@ -30,6 +87,8 @@ impl std::fmt::Display for McpStatus {
     }
 }
 
+// ─── Health check ───
+
 pub fn check_server(
     name: &str,
     command: &str,
@@ -39,7 +98,6 @@ pub fn check_server(
 ) -> McpCheckResult {
     let start = Instant::now();
 
-    // Spawn the MCP server process
     let child = Command::new(command)
         .args(args)
         .envs(env)
@@ -71,34 +129,35 @@ pub fn check_server(
             "capabilities": {},
             "clientInfo": {
                 "name": "mcp-hub",
-                "version": "0.1.0"
+                "version": env!("CARGO_PKG_VERSION")
             }
         }
     });
 
-    let stdin = child.stdin.as_mut().unwrap();
-    let msg = serde_json::to_string(&init_request).unwrap();
-    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
-    if stdin.write_all(frame.as_bytes()).is_err() {
-        let _ = child.kill();
-        return McpCheckResult {
-            server_name: name.to_string(),
-            status: McpStatus::ConnectionFailed("failed to write to stdin".into()),
-            tools: vec![],
-            resources: vec![],
-            latency_ms: start.elapsed().as_millis() as u64,
-        };
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let msg = serde_json::to_string(&init_request).unwrap();
+        let frame = format!("{}\n", msg);
+        if stdin.write_all(frame.as_bytes()).is_err() {
+            kill_and_reap(&mut child);
+            return McpCheckResult {
+                server_name: name.to_string(),
+                status: McpStatus::ConnectionFailed("failed to write to stdin".into()),
+                tools: vec![],
+                resources: vec![],
+                latency_ms: start.elapsed().as_millis() as u64,
+            };
+        }
+        let _ = stdin.flush();
     }
-    let _ = stdin.flush();
 
-    // Read response with timeout
     let stdout = child.stdout.take().unwrap();
-    let mut reader = BufReader::new(stdout);
+    let (rx, _reader_handle) = spawn_line_reader(stdout);
 
-    let init_response = match read_mcp_response(&mut reader, timeout) {
+    let init_response = match recv_mcp_response(&rx, timeout) {
         Ok(resp) => resp,
         Err(e) => {
-            let _ = child.kill();
+            kill_and_reap(&mut child);
             let status = if e.contains("timeout") {
                 McpStatus::Timeout
             } else {
@@ -114,13 +173,12 @@ pub fn check_server(
         }
     };
 
-    // Validate initialize response
     if init_response.get("error").is_some() {
         let err_msg = init_response["error"]
             .get("message")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown error");
-        let _ = child.kill();
+        kill_and_reap(&mut child);
         return McpCheckResult {
             server_name: name.to_string(),
             status: McpStatus::InvalidResponse(format!("initialize error: {}", err_msg)),
@@ -130,34 +188,34 @@ pub fn check_server(
         };
     }
 
-    // Send initialized notification
-    let initialized = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized"
-    });
-    let msg = serde_json::to_string(&initialized).unwrap();
-    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
-    let _ = stdin.write_all(frame.as_bytes());
-    let _ = stdin.flush();
+    // Send initialized notification + tools/list
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        });
+        let msg = serde_json::to_string(&initialized).unwrap();
+        let _ = stdin.write_all(format!("{}\n", msg).as_bytes());
+        let _ = stdin.flush();
 
-    // Request tools/list
-    let tools_request = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list"
-    });
-    let msg = serde_json::to_string(&tools_request).unwrap();
-    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
-    let _ = stdin.write_all(frame.as_bytes());
-    let _ = stdin.flush();
+        let tools_request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list"
+        });
+        let msg = serde_json::to_string(&tools_request).unwrap();
+        let _ = stdin.write_all(format!("{}\n", msg).as_bytes());
+        let _ = stdin.flush();
+    }
 
-    let tools_response = match read_mcp_response(&mut reader, timeout) {
+    let tools_response = match recv_mcp_response(&rx, timeout) {
         Ok(resp) => resp,
         Err(_) => {
-            let _ = child.kill();
+            kill_and_reap(&mut child);
             return McpCheckResult {
                 server_name: name.to_string(),
-                status: McpStatus::Healthy, // initialize succeeded, tools timed out
+                status: McpStatus::Healthy,
                 tools: vec![],
                 resources: vec![],
                 latency_ms: start.elapsed().as_millis() as u64,
@@ -177,17 +235,19 @@ pub fn check_server(
         .unwrap_or_default();
 
     // Request resources/list
-    let resources_request = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "resources/list"
-    });
-    let msg = serde_json::to_string(&resources_request).unwrap();
-    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
-    let _ = stdin.write_all(frame.as_bytes());
-    let _ = stdin.flush();
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let resources_request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "resources/list"
+        });
+        let msg = serde_json::to_string(&resources_request).unwrap();
+        let _ = stdin.write_all(format!("{}\n", msg).as_bytes());
+        let _ = stdin.flush();
+    }
 
-    let resources: Vec<String> = match read_mcp_response(&mut reader, timeout) {
+    let resources: Vec<String> = match recv_mcp_response(&rx, timeout) {
         Ok(resp) => resp
             .get("result")
             .and_then(|r| r.get("resources"))
@@ -201,7 +261,7 @@ pub fn check_server(
         Err(_) => vec![],
     };
 
-    let _ = child.kill();
+    kill_and_reap(&mut child);
     let latency = start.elapsed().as_millis() as u64;
 
     McpCheckResult {
@@ -211,62 +271,6 @@ pub fn check_server(
         resources,
         latency_ms: latency,
     }
-}
-
-/// Read a single MCP JSON-RPC response from the reader.
-/// MCP uses a Content-Length header framing format.
-fn read_mcp_response<R: BufRead>(
-    reader: &mut R,
-    timeout: Duration,
-) -> Result<serde_json::Value, String> {
-    let deadline = Instant::now() + timeout;
-
-    // Read headers
-    let mut content_length: Option<usize> = None;
-    let mut header_buf = String::new();
-
-    loop {
-        if Instant::now() > deadline {
-            return Err("timeout reading headers".into());
-        }
-
-        header_buf.clear();
-        let bytes_read = reader
-            .read_line(&mut header_buf)
-            .map_err(|e| format!("read error: {}", e))?;
-
-        if bytes_read == 0 {
-            return Err("EOF before response".into());
-        }
-
-        let trimmed = header_buf.trim();
-        if trimmed.is_empty() {
-            // End of headers
-            break;
-        }
-
-        if let Some(val) = trimmed.strip_prefix("Content-Length:") {
-            content_length = val.trim().parse::<usize>().ok();
-        }
-    }
-
-    let length = content_length.ok_or("missing Content-Length header")?;
-
-    // Read body
-    let mut body = vec![0u8; length];
-    let mut total_read = 0;
-    while total_read < length {
-        if Instant::now() > deadline {
-            return Err("timeout reading body".into());
-        }
-        match reader.read(&mut body[total_read..]) {
-            Ok(0) => return Err("EOF while reading body".into()),
-            Ok(n) => total_read += n,
-            Err(e) => return Err(format!("read error: {}", e)),
-        }
-    }
-
-    serde_json::from_slice(&body).map_err(|e| format!("invalid JSON: {}", e))
 }
 
 // ─── Benchmark support ───
@@ -327,25 +331,27 @@ pub fn bench_server(
         "params": {
             "protocolVersion": "2025-03-26",
             "capabilities": {},
-            "clientInfo": {"name": "mcp-hub", "version": "0.1.0"}
+            "clientInfo": {"name": "mcp-hub", "version": env!("CARGO_PKG_VERSION")}
         }
     });
-    let stdin = child.stdin.as_mut().unwrap();
-    let msg = serde_json::to_string(&init_request).unwrap();
-    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
-    if stdin.write_all(frame.as_bytes()).is_err() {
-        let _ = child.kill();
-        return fail("write init failed".into());
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let msg = serde_json::to_string(&init_request).unwrap();
+        let frame = format!("{}\n", msg);
+        if stdin.write_all(frame.as_bytes()).is_err() {
+            kill_and_reap(&mut child);
+            return fail("write init failed".into());
+        }
+        let _ = stdin.flush();
     }
-    let _ = stdin.flush();
 
     let stdout = child.stdout.take().unwrap();
-    let mut reader = BufReader::new(stdout);
+    let (rx, _reader_handle) = spawn_line_reader(stdout);
 
-    match read_mcp_response(&mut reader, timeout) {
+    match recv_mcp_response(&rx, timeout) {
         Ok(resp) => {
             if resp.get("error").is_some() {
-                let _ = child.kill();
+                kill_and_reap(&mut child);
                 let init_ms = init_start.elapsed().as_millis() as u64;
                 return BenchResult {
                     server_name: name.to_string(),
@@ -360,7 +366,7 @@ pub fn bench_server(
             }
         }
         Err(e) => {
-            let _ = child.kill();
+            kill_and_reap(&mut child);
             let init_ms = init_start.elapsed().as_millis() as u64;
             return BenchResult {
                 server_name: name.to_string(),
@@ -381,29 +387,29 @@ pub fn bench_server(
     }
     let init_ms = init_start.elapsed().as_millis() as u64;
 
-    // Send initialized notification
-    let initialized = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized"
-    });
-    let msg = serde_json::to_string(&initialized).unwrap();
-    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
-    let _ = stdin.write_all(frame.as_bytes());
-    let _ = stdin.flush();
+    // Send initialized notification + tools/list
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        });
+        let msg = serde_json::to_string(&initialized).unwrap();
+        let _ = stdin.write_all(format!("{}\n", msg).as_bytes());
+        let _ = stdin.flush();
 
-    // tools/list
+        let tools_request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list"
+        });
+        let msg = serde_json::to_string(&tools_request).unwrap();
+        let _ = stdin.write_all(format!("{}\n", msg).as_bytes());
+        let _ = stdin.flush();
+    }
+
     let tools_start = Instant::now();
-    let tools_request = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list"
-    });
-    let msg = serde_json::to_string(&tools_request).unwrap();
-    let frame = format!("Content-Length: {}\r\n\r\n{}", msg.len(), msg);
-    let _ = stdin.write_all(frame.as_bytes());
-    let _ = stdin.flush();
-
-    let tools_count = match read_mcp_response(&mut reader, timeout) {
+    let tools_count = match recv_mcp_response(&rx, timeout) {
         Ok(resp) => resp
             .get("result")
             .and_then(|r| r.get("tools"))
@@ -414,7 +420,7 @@ pub fn bench_server(
     };
     let tools_list_ms = tools_start.elapsed().as_millis() as u64;
 
-    let _ = child.kill();
+    kill_and_reap(&mut child);
 
     BenchResult {
         server_name: name.to_string(),
@@ -452,23 +458,30 @@ mod tests {
     }
 
     #[test]
-    fn test_read_mcp_response_empty() {
-        let data = b"Content-Length: 0\r\n\r\n";
-        let mut reader = BufReader::new(&data[..]);
-        // Empty body should fail to parse as JSON
-        let result = read_mcp_response(&mut reader, Duration::from_secs(1));
+    fn test_recv_timeout() {
+        let (_tx, rx) = mpsc::channel::<Result<String, String>>();
+        // Drop sender immediately so channel is closed... but we want timeout.
+        // Keep sender alive by leaking it.
+        let result = recv_mcp_response(&rx, Duration::from_millis(100));
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_read_mcp_response_valid() {
-        let body = r#"{"jsonrpc":"2.0","id":1,"result":{}}"#;
-        let data = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
-        let bytes = data.as_bytes();
-        let mut reader = BufReader::new(&bytes[..]);
-        let result = read_mcp_response(&mut reader, Duration::from_secs(1));
+    fn test_recv_valid_json() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(Ok(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#.to_string()))
+            .unwrap();
+        let result = recv_mcp_response(&rx, Duration::from_secs(1));
         assert!(result.is_ok());
         let resp = result.unwrap();
         assert_eq!(resp["id"], 1);
+    }
+
+    #[test]
+    fn test_recv_eof() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(Err("EOF".to_string())).unwrap();
+        let result = recv_mcp_response(&rx, Duration::from_secs(1));
+        assert_eq!(result.unwrap_err(), "EOF");
     }
 }
