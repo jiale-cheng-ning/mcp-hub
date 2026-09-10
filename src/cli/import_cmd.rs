@@ -116,5 +116,3 @@ pub fn run(file: &str, target: Option<&str>) {
         }
     }
 }
-
-

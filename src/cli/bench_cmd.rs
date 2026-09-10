@@ -57,8 +57,7 @@ pub fn run(server_filter: Option<&str>, rounds: usize, json: bool, timeout_secs:
                 }
                 let mut server_rounds = Vec::new();
                 for _ in 0..rounds {
-                    let result =
-                        mcp_check::bench_server(&name, &command, &args, &env, timeout);
+                    let result = mcp_check::bench_server(&name, &command, &args, &env, timeout);
                     server_rounds.push(result);
                 }
                 server_rounds

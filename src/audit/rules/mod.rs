@@ -395,7 +395,9 @@ impl AuditRule for PermHome {
                     .iter()
                     .filter_map(|arg| {
                         let trimmed = arg.trim();
-                        let is_home = home_patterns.iter().any(|p| trimmed.eq_ignore_ascii_case(p))
+                        let is_home = home_patterns
+                            .iter()
+                            .any(|p| trimmed.eq_ignore_ascii_case(p))
                             || trimmed.starts_with("~/")
                             || trimmed.starts_with("~\\")
                             || (trimmed.len() >= 10
@@ -763,9 +765,15 @@ fn dangerous_patterns() -> &'static [DangerousPattern] {
             },
             "piped wget to shell",
         ),
-        (|s: &str| s.contains("rm -rf") || s.contains("rm -fr"), "recursive force delete"),
+        (
+            |s: &str| s.contains("rm -rf") || s.contains("rm -fr"),
+            "recursive force delete",
+        ),
         (|s: &str| s.contains("eval "), "eval command"),
-        (|s: &str| s.contains("chmod 777"), "world-writable permissions"),
+        (
+            |s: &str| s.contains("chmod 777"),
+            "world-writable permissions",
+        ),
     ]
 }
 

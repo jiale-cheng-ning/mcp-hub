@@ -64,13 +64,15 @@ pub fn run(server_filter: Option<&str>, json: bool, timeout_secs: u64) {
 
     let results: Vec<mcp_check::McpCheckResult> = handles
         .into_iter()
-        .map(|h| h.join().unwrap_or_else(|_| mcp_check::McpCheckResult {
-            server_name: "unknown".into(),
-            status: McpStatus::ConnectionFailed("thread panicked".into()),
-            tools: vec![],
-            resources: vec![],
-            latency_ms: 0,
-        }))
+        .map(|h| {
+            h.join().unwrap_or_else(|_| mcp_check::McpCheckResult {
+                server_name: "unknown".into(),
+                status: McpStatus::ConnectionFailed("thread panicked".into()),
+                tools: vec![],
+                resources: vec![],
+                latency_ms: 0,
+            })
+        })
         .collect();
 
     if !json {

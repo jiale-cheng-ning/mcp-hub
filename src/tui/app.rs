@@ -169,13 +169,23 @@ impl App {
             }
             KeyCode::Tab => self.tab = Tab::Audit,
             KeyCode::Char('j') | KeyCode::Down if !filtered.is_empty() => {
-                let pos = filtered.iter().position(|&i| i == self.selected).unwrap_or(0);
+                let pos = filtered
+                    .iter()
+                    .position(|&i| i == self.selected)
+                    .unwrap_or(0);
                 let next = (pos + 1) % filtered.len();
                 self.selected = filtered[next];
             }
             KeyCode::Char('k') | KeyCode::Up if !filtered.is_empty() => {
-                let pos = filtered.iter().position(|&i| i == self.selected).unwrap_or(0);
-                let prev = if pos == 0 { filtered.len() - 1 } else { pos - 1 };
+                let pos = filtered
+                    .iter()
+                    .position(|&i| i == self.selected)
+                    .unwrap_or(0);
+                let prev = if pos == 0 {
+                    filtered.len() - 1
+                } else {
+                    pos - 1
+                };
                 self.selected = filtered[prev];
             }
             _ => {}

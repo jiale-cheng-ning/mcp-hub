@@ -180,5 +180,3 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
         }
     }
 }
-
-
