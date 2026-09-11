@@ -34,7 +34,10 @@ pub fn run(client_filter: Option<&str>, json: bool) {
     }
 
     if filtered.is_empty() {
-        println!("No MCP servers matched filter '{}'.", client_filter.unwrap_or(""));
+        println!(
+            "No MCP servers matched filter '{}'.",
+            client_filter.unwrap_or("")
+        );
         return;
     }
 

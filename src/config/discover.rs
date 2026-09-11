@@ -96,8 +96,7 @@ pub fn discover() -> Result<Vec<ServerEntry>, Box<dyn std::error::Error>> {
             continue;
         };
         let parsed = if matches!(client, ClientType::DeepSeekHarness) {
-            parse_dsh_cordis_yaml(&content, client.clone(), path.clone())
-                .map_err(|e| e.to_string())
+            parse_dsh_cordis_yaml(&content, client.clone(), path.clone()).map_err(|e| e.to_string())
         } else {
             parse_config(&content, client.clone(), path.clone()).map_err(|e| e.to_string())
         };

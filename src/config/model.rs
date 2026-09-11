@@ -36,8 +36,9 @@ impl ClientType {
             "cursor" => Some(ClientType::Cursor),
             "vscode" | "vs code" | "vs-code" | "visual studio code" => Some(ClientType::VSCode),
             "windsurf" => Some(ClientType::Windsurf),
-            "deepseek harness" | "deepseek-harness" | "deepseekharness" | "dsh"
-            | "deepseek" => Some(ClientType::DeepSeekHarness),
+            "deepseek harness" | "deepseek-harness" | "deepseekharness" | "dsh" | "deepseek" => {
+                Some(ClientType::DeepSeekHarness)
+            }
             _ => None,
         }
     }

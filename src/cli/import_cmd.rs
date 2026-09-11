@@ -54,19 +54,18 @@ pub fn run(file: &str, target: Option<&str>) {
     };
 
     if matches!(client, ClientType::DeepSeekHarness) {
-        let servers: Vec<(String, String, Vec<String>, std::collections::HashMap<String, String>)> =
-            export
-                .servers
-                .iter()
-                .map(|(name, s)| {
-                    (
-                        name.clone(),
-                        s.command.clone(),
-                        s.args.clone(),
-                        s.env.clone(),
-                    )
-                })
-                .collect();
+        let servers: Vec<crate::config::parser::DshServerSpec> = export
+            .servers
+            .iter()
+            .map(|(name, s)| {
+                (
+                    name.clone(),
+                    s.command.clone(),
+                    s.args.clone(),
+                    s.env.clone(),
+                )
+            })
+            .collect();
         match crate::config::parser::append_dsh_servers(&config_path, &servers) {
             Ok((imported, skipped)) => {
                 println!(

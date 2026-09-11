@@ -126,20 +126,21 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
     };
 
     if matches!(target_client, ClientType::DeepSeekHarness) {
-        let mut env = std::collections::HashMap::new();
-        let _ = &mut env;
         match crate::config::parser::append_dsh_servers(
             &config_path,
             &[(
                 server_name.clone(),
                 "npx".into(),
                 vec!["-y".into(), pkg.identifier.clone()],
-                env,
+                std::collections::HashMap::new(),
             )],
         ) {
             Ok((installed, skipped)) => {
                 if skipped > 0 {
-                    println!("Server '{}' already exists in config. Skipping.", server_name);
+                    println!(
+                        "Server '{}' already exists in config. Skipping.",
+                        server_name
+                    );
                     return;
                 }
                 println!(

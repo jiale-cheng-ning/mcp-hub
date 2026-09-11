@@ -198,19 +198,18 @@ fn install_preset_dsh(preset_name: &str, preset: &crate::preset::Preset) {
         preset_name
     );
 
-    let servers: Vec<(String, String, Vec<String>, std::collections::HashMap<String, String>)> =
-        preset
-            .servers
-            .iter()
-            .map(|(name, def)| {
-                let env = def
-                    .env
-                    .iter()
-                    .map(|k| (k.clone(), format!("${{{}}}", k)))
-                    .collect();
-                (name.clone(), "npx".into(), def.args.clone(), env)
-            })
-            .collect();
+    let servers: Vec<crate::config::parser::DshServerSpec> = preset
+        .servers
+        .iter()
+        .map(|(name, def)| {
+            let env = def
+                .env
+                .iter()
+                .map(|k| (k.clone(), format!("${{{}}}", k)))
+                .collect();
+            (name.clone(), "npx".into(), def.args.clone(), env)
+        })
+        .collect();
 
     // Report already-present names the same way as the JSON path.
     let existing = std::fs::read_to_string(&config_path).unwrap_or_default();
@@ -227,13 +226,10 @@ fn install_preset_dsh(preset_name: &str, preset: &crate::preset::Preset) {
 
     match crate::config::parser::append_dsh_servers(&config_path, &servers) {
         Ok((installed, skipped)) => {
-            for (name, _, _, _) in servers
-                .iter()
-                .filter(|(name, _, _, _)| {
-                    !(existing.contains(&format!("serverName: {name}"))
-                        || existing.contains(&format!("serverName: '{name}'")))
-                })
-            {
+            for (name, _, _, _) in servers.iter().filter(|(name, _, _, _)| {
+                !(existing.contains(&format!("serverName: {name}"))
+                    || existing.contains(&format!("serverName: '{name}'")))
+            }) {
                 println!("  ✓  {}", name);
             }
             println!(
@@ -258,4 +254,3 @@ fn install_preset_dsh(preset_name: &str, preset: &crate::preset::Preset) {
         Err(e) => eprintln!("Failed to write config: {}", e),
     }
 }
-

@@ -3,6 +3,9 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// (name, command, args, env) for a stdio MCP server written to DSH YAML.
+pub type DshServerSpec = (String, String, Vec<String>, HashMap<String, String>);
+
 #[derive(Deserialize)]
 struct RawServerConfig {
     command: Option<String>,
@@ -61,7 +64,12 @@ fn strip_yaml_tags(content: &str) -> String {
             let rest = match after.find(char::is_whitespace) {
                 Some(sp) => {
                     let value = after[sp..].trim_start();
-                    if value.is_empty() || value == ">-" || value == ">" || value == "|" || value == "|-" {
+                    if value.is_empty()
+                        || value == ">-"
+                        || value == ">"
+                        || value == "|"
+                        || value == "|-"
+                    {
                         after[sp..].to_string()
                     } else {
                         format!(" {}", value)
@@ -125,7 +133,7 @@ fn collect_dsh_mcp_entries(
             // Patch op: { insert: [ plugins... ] } / { patch: [ plugins... ] }
             for key in ["insert", "patch", "plugins", "config"] {
                 if let Some(serde_yaml::Value::Sequence(list)) =
-                    map.get(&serde_yaml::Value::String(key.to_string()))
+                    map.get(serde_yaml::Value::String(key.to_string()))
                 {
                     for plugin in list {
                         collect_dsh_mcp_entries(plugin, client, source_path, entries);
@@ -135,13 +143,13 @@ fn collect_dsh_mcp_entries(
 
             // Plugin row: { name: '@deepseek-ai/dsh-mcp-client', config: { ... } }
             let name = map
-                .get(&serde_yaml::Value::String("name".into()))
+                .get(serde_yaml::Value::String("name".into()))
                 .and_then(yaml_string)
                 .unwrap_or_default();
             if !name.contains("dsh-mcp-client") {
                 return;
             }
-            let Some(config) = map.get(&serde_yaml::Value::String("config".into())) else {
+            let Some(config) = map.get(serde_yaml::Value::String("config".into())) else {
                 return;
             };
             let Some(cfg_map) = config.as_mapping() else {
@@ -149,7 +157,7 @@ fn collect_dsh_mcp_entries(
             };
             let get = |k: &str| {
                 cfg_map
-                    .get(&serde_yaml::Value::String(k.to_string()))
+                    .get(serde_yaml::Value::String(k.to_string()))
                     .cloned()
                     .unwrap_or(serde_yaml::Value::Null)
             };
@@ -158,7 +166,7 @@ fn collect_dsh_mcp_entries(
                 .as_str()
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| {
-                    map.get(&serde_yaml::Value::String("id".into()))
+                    map.get(serde_yaml::Value::String("id".into()))
                         .and_then(yaml_string)
                         .unwrap_or_else(|| "dsh-mcp".into())
                 });
@@ -172,7 +180,12 @@ fn collect_dsh_mcp_entries(
                 } else {
                     ServerStatus::Active
                 };
-                (command, yaml_args(&get("args")), yaml_env(&get("env")), status)
+                (
+                    command,
+                    yaml_args(&get("args")),
+                    yaml_env(&get("env")),
+                    status,
+                )
             } else {
                 // streamable-http: surface URL as command so scan/audit still see something
                 let url = yaml_string(&get("url")).unwrap_or_default();
@@ -217,7 +230,7 @@ fn yaml_quote(s: &str) -> String {
 }
 
 /// Serialize servers into a Cordis patch YAML insert block for DSH.
-pub fn dsh_cordis_yaml_from_servers(servers: &[(String, String, Vec<String>, HashMap<String, String>)]) -> String {
+pub fn dsh_cordis_yaml_from_servers(servers: &[DshServerSpec]) -> String {
     let mut out = String::from("# Managed by mcp-hub — DeepSeek Harness MCP servers\n- insert:\n");
     for (name, command, args, env) in servers {
         out.push_str(&format!(
@@ -246,11 +259,11 @@ pub fn dsh_cordis_yaml_from_servers(servers: &[(String, String, Vec<String>, Has
 /// Returns `(installed, skipped)` counts.
 pub fn append_dsh_servers(
     path: &std::path::Path,
-    servers: &[(String, String, Vec<String>, HashMap<String, String>)],
+    servers: &[DshServerSpec],
 ) -> std::io::Result<(usize, usize)> {
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     let mut skipped = 0;
-    let mut pending: Vec<(String, String, Vec<String>, HashMap<String, String>)> = Vec::new();
+    let mut pending: Vec<DshServerSpec> = Vec::new();
 
     for (name, command, args, env) in servers {
         if existing.contains(&format!("serverName: {name}"))
@@ -380,7 +393,10 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "github");
         assert_eq!(entries[0].command, "npx");
-        assert_eq!(entries[0].args, vec!["-y", "@modelcontextprotocol/server-github"]);
+        assert_eq!(
+            entries[0].args,
+            vec!["-y", "@modelcontextprotocol/server-github"]
+        );
         assert_eq!(entries[0].env.get("GITHUB_TOKEN").unwrap(), "token123");
         assert!(matches!(entries[0].status, ServerStatus::Active));
     }
@@ -467,7 +483,12 @@ mod tests {
         let (installed, skipped) = append_dsh_servers(
             &path,
             &[
-                ("github".into(), "npx".into(), vec!["-y".into()], env.clone()),
+                (
+                    "github".into(),
+                    "npx".into(),
+                    vec!["-y".into()],
+                    env.clone(),
+                ),
                 ("fs".into(), "npx".into(), vec!["-y".into()], env.clone()),
             ],
         )

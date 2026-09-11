@@ -92,19 +92,18 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
             existing.contains(&format!("serverName: {name}"))
                 || existing.contains(&format!("serverName: '{name}'"))
         };
-        let servers: Vec<(String, String, Vec<String>, std::collections::HashMap<String, String>)> =
-            from_entries
-                .iter()
-                .filter(|e| !already(&e.name))
-                .map(|e| {
-                    (
-                        e.name.clone(),
-                        e.command.clone(),
-                        e.args.clone(),
-                        e.env.clone(),
-                    )
-                })
-                .collect();
+        let servers: Vec<crate::config::parser::DshServerSpec> = from_entries
+            .iter()
+            .filter(|e| !already(&e.name))
+            .map(|e| {
+                (
+                    e.name.clone(),
+                    e.command.clone(),
+                    e.args.clone(),
+                    e.env.clone(),
+                )
+            })
+            .collect();
         for entry in &from_entries {
             if already(&entry.name) {
                 println!("  ⏭  {} (already exists in {})", entry.name, to_client);
