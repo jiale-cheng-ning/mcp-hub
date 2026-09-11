@@ -1,15 +1,14 @@
 use crate::config::discover::config_path_for;
 use crate::config::model::ClientType;
-use crate::config::parser::parse_config;
+use crate::config::parser::{parse_config, parse_dsh_cordis_yaml};
+
+const CLIENT_HELP: &str = "claude-desktop, claude-code, cursor, vscode, windsurf, dsh";
 
 pub fn run(from: &str, to: &str, dry_run: bool) {
     let from_client = match ClientType::from_str_loose(from) {
         Some(c) => c,
         None => {
-            eprintln!(
-                "Unknown source client '{}'. Use: claude-desktop, claude-code, cursor, vscode, windsurf",
-                from
-            );
+            eprintln!("Unknown source client '{}'. Use: {}", from, CLIENT_HELP);
             return;
         }
     };
@@ -17,10 +16,7 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
     let to_client = match ClientType::from_str_loose(to) {
         Some(c) => c,
         None => {
-            eprintln!(
-                "Unknown target client '{}'. Use: claude-desktop, claude-code, cursor, vscode, windsurf",
-                to
-            );
+            eprintln!("Unknown target client '{}'. Use: {}", to, CLIENT_HELP);
             return;
         }
     };
@@ -52,11 +48,21 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
         }
     };
 
-    let from_entries = match parse_config(&from_content, from_client.clone(), from_path.clone()) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("Failed to parse source config: {}", e);
-            return;
+    let from_entries = if matches!(from_client, ClientType::DeepSeekHarness) {
+        match parse_dsh_cordis_yaml(&from_content, from_client.clone(), from_path.clone()) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("Failed to parse source config: {}", e);
+                return;
+            }
+        }
+    } else {
+        match parse_config(&from_content, from_client.clone(), from_path.clone()) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("Failed to parse source config: {}", e);
+                return;
+            }
         }
     };
 
@@ -73,6 +79,61 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
             return;
         }
     };
+
+    if matches!(to_client, ClientType::DeepSeekHarness) {
+        println!(
+            "Syncing {} server(s) from {} to {}...\n",
+            from_entries.len(),
+            from_client,
+            to_client
+        );
+        let existing = std::fs::read_to_string(&to_path).unwrap_or_default();
+        let already = |name: &str| {
+            existing.contains(&format!("serverName: {name}"))
+                || existing.contains(&format!("serverName: '{name}'"))
+        };
+        let servers: Vec<(String, String, Vec<String>, std::collections::HashMap<String, String>)> =
+            from_entries
+                .iter()
+                .filter(|e| !already(&e.name))
+                .map(|e| {
+                    (
+                        e.name.clone(),
+                        e.command.clone(),
+                        e.args.clone(),
+                        e.env.clone(),
+                    )
+                })
+                .collect();
+        for entry in &from_entries {
+            if already(&entry.name) {
+                println!("  ⏭  {} (already exists in {})", entry.name, to_client);
+            } else {
+                println!("  ✓  {}", entry.name);
+            }
+        }
+        if dry_run {
+            println!(
+                "\nDry run: would sync {} server(s), skip {} (already exist).",
+                servers.len(),
+                from_entries.len() - servers.len()
+            );
+            println!("No changes written.");
+            return;
+        }
+        match crate::config::parser::append_dsh_servers(&to_path, &servers) {
+            Ok((synced, skipped)) => {
+                println!(
+                    "\nDone! Synced {} server(s), skipped {} (already exist).",
+                    synced, skipped
+                );
+                println!("Config written to: {}", to_path.display());
+                println!("\nRestart {} to load the new servers.", to_client);
+            }
+            Err(e) => eprintln!("Failed to write config: {}", e),
+        }
+        return;
+    }
 
     let mut existing: serde_json::Value = if to_path.exists() {
         std::fs::read_to_string(&to_path)

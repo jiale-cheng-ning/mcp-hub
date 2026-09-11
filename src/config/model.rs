@@ -10,6 +10,7 @@ pub enum ClientType {
     Cursor,
     VSCode,
     Windsurf,
+    DeepSeekHarness,
 }
 
 impl std::fmt::Display for ClientType {
@@ -20,6 +21,7 @@ impl std::fmt::Display for ClientType {
             ClientType::Cursor => write!(f, "Cursor"),
             ClientType::VSCode => write!(f, "VS Code"),
             ClientType::Windsurf => write!(f, "Windsurf"),
+            ClientType::DeepSeekHarness => write!(f, "DeepSeek Harness"),
         }
     }
 }
@@ -34,6 +36,8 @@ impl ClientType {
             "cursor" => Some(ClientType::Cursor),
             "vscode" | "vs code" | "vs-code" | "visual studio code" => Some(ClientType::VSCode),
             "windsurf" => Some(ClientType::Windsurf),
+            "deepseek harness" | "deepseek-harness" | "deepseekharness" | "dsh"
+            | "deepseek" => Some(ClientType::DeepSeekHarness),
             _ => None,
         }
     }
@@ -246,5 +250,13 @@ mod tests {
             Some(ClientType::ClaudeCode)
         );
         assert_eq!(ClientType::from_str_loose("unknown"), None);
+        assert_eq!(
+            ClientType::from_str_loose("dsh"),
+            Some(ClientType::DeepSeekHarness)
+        );
+        assert_eq!(
+            ClientType::from_str_loose("deepseek-harness"),
+            Some(ClientType::DeepSeekHarness)
+        );
     }
 }

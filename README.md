@@ -24,7 +24,7 @@ Some are broken. Some have security issues. You can't see them all at once.
 | Feature | Description |
 |---------|-------------|
 | **TUI Dashboard** | Interactive terminal UI — browse, inspect, and filter all MCP servers |
-| **Auto-Discovery** | Scans Claude Desktop, Claude Code, Cursor, Windsurf configs automatically |
+| **Auto-Discovery** | Scans Claude Desktop, Claude Code, Cursor, Windsurf, and DeepSeek Harness (`$DSH_HOME/cordis.patch.yml` + profiles) configs automatically |
 | **Security Audit** | **15 rules** — typosquatting, CVE detection, postinstall scripts, shell injection, secrets, and more |
 | **MCP Doctor** | Real MCP protocol health checks — spawns servers, validates handshake, counts tools |
 | **Benchmark** | Performance testing — spawn time, init latency, tools/list response time per server |
@@ -74,7 +74,9 @@ mcp-hub export       # Export all configs to mcp-hub.json (secrets redacted)
 mcp-hub import mcp-hub.json --target cursor  # Import configs to a client
 mcp-hub preset list                  # Show available preset bundles
 mcp-hub preset install web-dev --target cursor  # Install a preset to a client
+mcp-hub preset install web-dev --target dsh     # Install a preset to DeepSeek Harness
 mcp-hub sync --from claude-desktop --to cursor  # Sync configs between clients
+mcp-hub sync --from cursor --to dsh             # Sync into DeepSeek Harness
 ```
 
 ### TUI keybindings

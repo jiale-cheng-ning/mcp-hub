@@ -1,6 +1,8 @@
 use crate::config::discover::config_path_for;
 use crate::config::model::{ClientType, ExportData};
 
+const CLIENT_HELP: &str = "claude-desktop, claude-code, cursor, vscode, windsurf, dsh";
+
 pub fn run(file: &str, target: Option<&str>) {
     let content = match std::fs::read_to_string(file) {
         Ok(c) => c,
@@ -28,14 +30,14 @@ pub fn run(file: &str, target: Option<&str>) {
         Some(t) => match ClientType::from_str_loose(t) {
             Some(c) => c,
             None => {
-                eprintln!("Unknown client '{}'. Use: claude-desktop, claude-code, cursor, vscode, windsurf", t);
+                eprintln!("Unknown client '{}'. Use: {}", t, CLIENT_HELP);
                 return;
             }
         },
         None => {
             // Default: prompt or pick first available
             println!("No --target specified. Available clients:");
-            println!("  claude-desktop, claude-code, cursor, vscode, windsurf");
+            println!("  {}", CLIENT_HELP);
             println!("\nUsage: mcp-hub import {} --target <client>", file);
             return;
         }
@@ -50,6 +52,37 @@ pub fn run(file: &str, target: Option<&str>) {
             return;
         }
     };
+
+    if matches!(client, ClientType::DeepSeekHarness) {
+        let servers: Vec<(String, String, Vec<String>, std::collections::HashMap<String, String>)> =
+            export
+                .servers
+                .iter()
+                .map(|(name, s)| {
+                    (
+                        name.clone(),
+                        s.command.clone(),
+                        s.args.clone(),
+                        s.env.clone(),
+                    )
+                })
+                .collect();
+        match crate::config::parser::append_dsh_servers(&config_path, &servers) {
+            Ok((imported, skipped)) => {
+                println!(
+                    "\nImported {} server(s) to {} ({})",
+                    imported,
+                    client,
+                    config_path.display()
+                );
+                if skipped > 0 {
+                    println!("Skipped {} existing server(s)", skipped);
+                }
+            }
+            Err(e) => eprintln!("Failed to write {}: {}", config_path.display(), e),
+        }
+        return;
+    }
 
     // Read existing config or create empty
     let mut existing: serde_json::Value = if config_path.exists() {

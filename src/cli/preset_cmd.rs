@@ -1,5 +1,8 @@
+use crate::config::discover::config_path_for;
 use crate::config::model::ClientType;
 use crate::preset;
+
+const CLIENT_HELP: &str = "claude-desktop, claude-code, cursor, vscode, windsurf, dsh";
 
 pub fn run(subcmd: &str, name: Option<&str>, target: Option<&str>, json: bool) {
     match subcmd {
@@ -62,10 +65,7 @@ fn install_preset(name: &str, target: Option<&str>) {
         Some(t) => match ClientType::from_str_loose(t) {
             Some(c) => c,
             None => {
-                eprintln!(
-                    "Unknown client '{}'. Use: claude-desktop, claude-code, cursor, vscode, windsurf",
-                    t
-                );
+                eprintln!("Unknown client '{}'. Use: {}", t, CLIENT_HELP);
                 return;
             }
         },
@@ -81,13 +81,18 @@ fn install_preset(name: &str, target: Option<&str>) {
                     .join(", ")
             );
             println!("\nNo --target specified. Available clients:");
-            println!("  claude-desktop, claude-code, cursor, vscode, windsurf");
+            println!("  {}", CLIENT_HELP);
             println!("\nUsage: mcp-hub preset install {} --target <client>", name);
             return;
         }
     };
 
-    let config_path = match get_config_path(&target_client) {
+    if matches!(target_client, ClientType::DeepSeekHarness) {
+        install_preset_dsh(name, &preset);
+        return;
+    }
+
+    let config_path = match config_path_for(&target_client) {
         Some(p) => p,
         None => {
             eprintln!("Could not determine config path for {}", target_client);
@@ -179,16 +184,78 @@ fn install_preset(name: &str, target: Option<&str>) {
     }
 }
 
-fn get_config_path(client: &ClientType) -> Option<std::path::PathBuf> {
-    match client {
-        ClientType::ClaudeDesktop => {
-            dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
+fn install_preset_dsh(preset_name: &str, preset: &crate::preset::Preset) {
+    let config_path = match crate::config::discover::dsh_primary_config_path() {
+        Some(p) => p,
+        None => {
+            eprintln!("Could not determine DeepSeek Harness home");
+            return;
         }
-        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
-        ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
-        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
-        ClientType::Windsurf => {
-            dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
+    };
+
+    println!(
+        "Installing preset '{}' to DeepSeek Harness...\n",
+        preset_name
+    );
+
+    let servers: Vec<(String, String, Vec<String>, std::collections::HashMap<String, String>)> =
+        preset
+            .servers
+            .iter()
+            .map(|(name, def)| {
+                let env = def
+                    .env
+                    .iter()
+                    .map(|k| (k.clone(), format!("${{{}}}", k)))
+                    .collect();
+                (name.clone(), "npx".into(), def.args.clone(), env)
+            })
+            .collect();
+
+    // Report already-present names the same way as the JSON path.
+    let existing = std::fs::read_to_string(&config_path).unwrap_or_default();
+    for name in servers
+        .iter()
+        .filter(|(name, _, _, _)| {
+            existing.contains(&format!("serverName: {name}"))
+                || existing.contains(&format!("serverName: '{name}'"))
+        })
+        .map(|(name, _, _, _)| name)
+    {
+        println!("  ⏭  {} (already exists)", name);
+    }
+
+    match crate::config::parser::append_dsh_servers(&config_path, &servers) {
+        Ok((installed, skipped)) => {
+            for (name, _, _, _) in servers
+                .iter()
+                .filter(|(name, _, _, _)| {
+                    !(existing.contains(&format!("serverName: {name}"))
+                        || existing.contains(&format!("serverName: '{name}'")))
+                })
+            {
+                println!("  ✓  {}", name);
+            }
+            println!(
+                "\nDone! Installed {} server(s), skipped {} (already exist).",
+                installed, skipped
+            );
+            println!("Config written to: {}", config_path.display());
+            println!("\nRestart DeepSeek Harness to load the new servers.");
+            let env_vars: Vec<&str> = preset
+                .servers
+                .values()
+                .flat_map(|s| s.env.iter())
+                .map(|s| s.as_str())
+                .collect();
+            if !env_vars.is_empty() {
+                println!(
+                    "\n⚠  Set these environment variables before using:\n   {}",
+                    env_vars.join(", ")
+                );
+            }
         }
+        Err(e) => eprintln!("Failed to write config: {}", e),
     }
 }
+

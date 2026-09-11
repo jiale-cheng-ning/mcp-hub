@@ -11,9 +11,9 @@ pub fn run(client_filter: Option<&str>, json: bool) {
         .iter()
         .filter(|e| {
             if let Some(filter) = client_filter {
-                format!("{}", e.source_client)
-                    .to_lowercase()
-                    .contains(&filter.to_lowercase())
+                let f = filter.to_lowercase();
+                format!("{}", e.source_client).to_lowercase().contains(&f)
+                    || matches!(crate::config::model::ClientType::from_str_loose(filter), Some(t) if t == e.source_client)
             } else {
                 true
             }
@@ -28,8 +28,13 @@ pub fn run(client_filter: Option<&str>, json: bool) {
         return;
     }
 
+    if entries.is_empty() {
+        println!("No MCP servers discovered. Check that Claude Desktop, Cursor, DeepSeek Harness, or other clients are configured.");
+        return;
+    }
+
     if filtered.is_empty() {
-        println!("No MCP servers discovered. Check that Claude Desktop, Cursor, or other clients are configured.");
+        println!("No MCP servers matched filter '{}'.", client_filter.unwrap_or(""));
         return;
     }
 

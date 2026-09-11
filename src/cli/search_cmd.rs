@@ -40,7 +40,7 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
             Some(c) => c,
             None => {
                 eprintln!(
-                    "Unknown client '{}'. Use: claude-desktop, claude-code, cursor, vscode, windsurf",
+                    "Unknown client '{}'. Use: claude-desktop, claude-code, cursor, vscode, windsurf, dsh",
                     t
                 );
                 return;
@@ -48,7 +48,7 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
         },
         None => {
             println!("\nNo --target specified. Available clients:");
-            println!("  claude-desktop, claude-code, cursor, vscode, windsurf");
+            println!("  claude-desktop, claude-code, cursor, vscode, windsurf, dsh");
             println!(
                 "\nUsage: mcp-hub search \"{}\" --install --target <client>",
                 query
@@ -124,6 +124,38 @@ pub fn run(query: &str, limit: usize, install: bool, target: Option<&str>) {
             return;
         }
     };
+
+    if matches!(target_client, ClientType::DeepSeekHarness) {
+        let mut env = std::collections::HashMap::new();
+        let _ = &mut env;
+        match crate::config::parser::append_dsh_servers(
+            &config_path,
+            &[(
+                server_name.clone(),
+                "npx".into(),
+                vec!["-y".into(), pkg.identifier.clone()],
+                env,
+            )],
+        ) {
+            Ok((installed, skipped)) => {
+                if skipped > 0 {
+                    println!("Server '{}' already exists in config. Skipping.", server_name);
+                    return;
+                }
+                println!(
+                    "\n✓ Added '{}' to {} ({})",
+                    server_name,
+                    target_client,
+                    config_path.display()
+                );
+                println!("  command: npx -y {}", pkg.identifier);
+                println!("\nRestart {} to load the new server.", target_client);
+                let _ = installed;
+            }
+            Err(e) => eprintln!("Failed to write config: {}", e),
+        }
+        return;
+    }
 
     // Read existing config or create empty
     let mut existing: serde_json::Value = if config_path.exists() {

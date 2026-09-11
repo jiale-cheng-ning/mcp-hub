@@ -1,6 +1,45 @@
 use crate::config::model::{ClientType, ServerEntry};
-use crate::config::parser::parse_config;
-use std::path::PathBuf;
+use crate::config::parser::{parse_config, parse_dsh_cordis_yaml};
+use std::path::{Path, PathBuf};
+
+/// Resolve DeepSeek Harness home: `$DSH_HOME` or `~/.dsh`.
+pub fn dsh_home() -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("DSH_HOME") {
+        if !home.trim().is_empty() {
+            return Some(PathBuf::from(home));
+        }
+    }
+    dirs::home_dir().map(|p| p.join(".dsh"))
+}
+
+/// Primary user-level DSH config (used for install/write paths).
+pub fn dsh_primary_config_path() -> Option<PathBuf> {
+    dsh_home().map(|p| p.join("cordis.patch.yml"))
+}
+
+/// All known DSH Cordis patch files (global + every profile).
+pub fn dsh_config_paths() -> Vec<PathBuf> {
+    let Some(home) = dsh_home() else {
+        return Vec::new();
+    };
+    let mut paths = Vec::new();
+    let global = home.join("cordis.patch.yml");
+    if global.exists() {
+        paths.push(global);
+    }
+    let profiles = home.join("profiles");
+    if profiles.is_dir() {
+        if let Ok(read) = std::fs::read_dir(&profiles) {
+            for entry in read.flatten() {
+                let patch = entry.path().join("cordis.patch.yml");
+                if patch.is_file() {
+                    paths.push(patch);
+                }
+            }
+        }
+    }
+    paths
+}
 
 /// Return the config file path for a given client type.
 pub fn config_path_for(client: &ClientType) -> Option<PathBuf> {
@@ -14,6 +53,7 @@ pub fn config_path_for(client: &ClientType) -> Option<PathBuf> {
         ClientType::Windsurf => {
             dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
         }
+        ClientType::DeepSeekHarness => dsh_primary_config_path(),
     }
 }
 
@@ -25,23 +65,46 @@ pub fn known_config_paths() -> Vec<(ClientType, PathBuf)> {
         ClientType::VSCode,
         ClientType::Windsurf,
     ];
-    clients
+    let mut paths: Vec<(ClientType, PathBuf)> = clients
         .iter()
         .filter_map(|c| config_path_for(c).map(|p| (c.clone(), p)))
-        .collect()
+        .collect();
+    for p in dsh_config_paths() {
+        paths.push((ClientType::DeepSeekHarness, p));
+    }
+    paths
+}
+
+fn read_config_file(path: &Path) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+    match std::fs::read_to_string(path) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            eprintln!("Warning: failed to read {}: {}", path.display(), e);
+            None
+        }
+    }
 }
 
 pub fn discover() -> Result<Vec<ServerEntry>, Box<dyn std::error::Error>> {
     let mut all_entries = Vec::new();
 
     for (client, path) in known_config_paths() {
-        if path.exists() {
-            let content = std::fs::read_to_string(&path)?;
-            match parse_config(&content, client, path.clone()) {
-                Ok(entries) => all_entries.extend(entries),
-                Err(e) => {
-                    eprintln!("Warning: failed to parse {}: {}", path.display(), e);
-                }
+        let Some(content) = read_config_file(&path) else {
+            continue;
+        };
+        let parsed = if matches!(client, ClientType::DeepSeekHarness) {
+            parse_dsh_cordis_yaml(&content, client.clone(), path.clone())
+                .map_err(|e| e.to_string())
+        } else {
+            parse_config(&content, client.clone(), path.clone()).map_err(|e| e.to_string())
+        };
+        match parsed {
+            Ok(entries) => all_entries.extend(entries),
+            Err(e) => {
+                eprintln!("Warning: failed to parse {}: {}", path.display(), e);
             }
         }
     }
@@ -67,5 +130,22 @@ mod tests {
     fn test_discover_returns_vec() {
         let result = discover();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_dsh_home_honors_env() {
+        let prev = std::env::var("DSH_HOME").ok();
+        std::env::set_var("DSH_HOME", "/tmp/fake-dsh-home");
+        assert_eq!(dsh_home(), Some(PathBuf::from("/tmp/fake-dsh-home")));
+        match prev {
+            Some(v) => std::env::set_var("DSH_HOME", v),
+            None => std::env::remove_var("DSH_HOME"),
+        }
+    }
+
+    #[test]
+    fn test_config_path_for_dsh_is_under_home() {
+        let path = config_path_for(&ClientType::DeepSeekHarness).unwrap();
+        assert!(path.ends_with("cordis.patch.yml"));
     }
 }
