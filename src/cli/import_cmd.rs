@@ -84,20 +84,13 @@ pub fn run(file: &str, target: Option<&str>) {
     }
 
     // Read existing config or create empty
-    let mut existing: serde_json::Value = if config_path.exists() {
-        match std::fs::read_to_string(&config_path) {
-            Ok(content) => serde_json::from_str(&content)
-                .unwrap_or_else(|_| serde_json::json!({ "mcpServers": {} })),
-            Err(_) => serde_json::json!({ "mcpServers": {} }),
+    let mut existing = match crate::config::safe_io::read_json_config(&config_path) {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("Refusing to overwrite invalid or unreadable config: {}", e);
+            return;
         }
-    } else {
-        serde_json::json!({ "mcpServers": {} })
     };
-
-    // Ensure mcpServers object exists
-    if existing.get("mcpServers").is_none() {
-        existing["mcpServers"] = serde_json::json!({});
-    }
 
     let config_json = export.to_config_json();
     let new_servers = config_json
@@ -131,7 +124,7 @@ pub fn run(file: &str, target: Option<&str>) {
     if let Some(parent) = config_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    match std::fs::write(&config_path, &output) {
+    match crate::config::safe_io::write_config_atomic(&config_path, &output) {
         Ok(()) => {
             println!(
                 "\nImported {} server(s) to {} ({})",

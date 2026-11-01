@@ -87,7 +87,13 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
             from_client,
             to_client
         );
-        let existing = std::fs::read_to_string(&to_path).unwrap_or_default();
+        let existing = match crate::config::safe_io::read_optional(&to_path) {
+            Ok(value) => value.unwrap_or_default(),
+            Err(e) => {
+                eprintln!("Failed to read target config: {}", e);
+                return;
+            }
+        };
         let already = |name: &str| {
             existing.contains(&format!("serverName: {name}"))
                 || existing.contains(&format!("serverName: '{name}'"))
@@ -134,18 +140,13 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
         return;
     }
 
-    let mut existing: serde_json::Value = if to_path.exists() {
-        std::fs::read_to_string(&to_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| serde_json::json!({ "mcpServers": {} }))
-    } else {
-        serde_json::json!({ "mcpServers": {} })
+    let mut existing = match crate::config::safe_io::read_json_config(&to_path) {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("Refusing to overwrite invalid or unreadable config: {}", e);
+            return;
+        }
     };
-
-    if existing.get("mcpServers").is_none() {
-        existing["mcpServers"] = serde_json::json!({});
-    }
 
     let servers = existing
         .get_mut("mcpServers")
@@ -206,7 +207,7 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
         let _ = std::fs::create_dir_all(parent);
     }
     let output = serde_json::to_string_pretty(&existing).unwrap_or_default();
-    match std::fs::write(&to_path, &output) {
+    match crate::config::safe_io::write_config_atomic(&to_path, &output) {
         Ok(()) => {
             println!(
                 "\nDone! Synced {} server(s), skipped {} (already exist).",

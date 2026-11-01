@@ -4,6 +4,11 @@
 
 **One TUI to manage all your MCP servers.**
 
+`sync` and `import` refuse unreadable or malformed destination configs. Writes
+use a temporary file and atomic replacement, with a uniquely named
+`<config>.<process>.<id>.bak` backup of each existing destination. Backups can
+contain credentials; keep them private and remove older copies when no longer needed.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
 

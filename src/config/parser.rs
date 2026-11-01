@@ -261,7 +261,17 @@ pub fn append_dsh_servers(
     path: &std::path::Path,
     servers: &[DshServerSpec],
 ) -> std::io::Result<(usize, usize)> {
-    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    let existing = crate::config::safe_io::read_optional(path)?.unwrap_or_default();
+    if !existing.trim().is_empty() {
+        let root: serde_yaml::Value =
+            serde_yaml::from_str(&strip_yaml_tags(&existing)).map_err(std::io::Error::other)?;
+        if !root.is_sequence() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "DSH config root must be a sequence",
+            ));
+        }
+    }
     let mut skipped = 0;
     let mut pending: Vec<DshServerSpec> = Vec::new();
 
@@ -304,7 +314,9 @@ pub fn append_dsh_servers(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, content)?;
+    let _: serde_yaml::Value =
+        serde_yaml::from_str(&strip_yaml_tags(&content)).map_err(std::io::Error::other)?;
+    crate::config::safe_io::write_config_atomic(path, &content)?;
     Ok((pending.len(), skipped))
 }
 
