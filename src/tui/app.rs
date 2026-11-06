@@ -83,7 +83,7 @@ impl App {
             .filter(|&i| {
                 let s = &self.servers[i];
                 s.name.to_lowercase().contains(&q)
-                    || s.command.to_lowercase().contains(&q)
+                    || s.display_endpoint().to_lowercase().contains(&q)
                     || s.args.iter().any(|a| a.to_lowercase().contains(&q))
                     || format!("{}", s.source_client).to_lowercase().contains(&q)
             })

@@ -40,7 +40,7 @@ pub fn run(output: Option<&str>) {
 fn count_secrets(servers: &[ServerEntry]) -> usize {
     servers
         .iter()
-        .flat_map(|s| s.env.iter())
+        .flat_map(|s| s.credential_fields())
         .filter(|(k, _)| has_secret_keyword(k))
         .count()
 }

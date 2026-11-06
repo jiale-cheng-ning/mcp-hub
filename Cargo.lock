@@ -605,13 +605,16 @@ dependencies = [
  "clap",
  "crossterm",
  "dirs",
+ "libc",
  "ratatui",
  "serde",
  "serde_json",
  "serde_yaml",
  "sysinfo",
  "ureq",
+ "url",
  "urlencoding",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

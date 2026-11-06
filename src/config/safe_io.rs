@@ -1,3 +1,4 @@
+#[cfg(test)]
 use serde_json::{json, Value};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -12,6 +13,7 @@ pub fn read_optional(path: &Path) -> io::Result<Option<String>> {
     }
 }
 
+#[cfg(test)]
 pub fn read_json_config(path: &Path) -> io::Result<Value> {
     let mut value: Value = match read_optional(path)? {
         Some(text) => serde_json::from_str(&text).map_err(io::Error::other)?,

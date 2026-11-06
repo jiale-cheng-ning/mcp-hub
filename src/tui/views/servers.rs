@@ -40,7 +40,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
             Row::new(vec![
                 Cell::from(s.name.clone()),
                 Cell::from(format!("{}", s.source_client)),
-                Cell::from(s.command.clone()),
+                Cell::from(format!("{}: {}", s.transport.label(), s.display_endpoint())),
                 Cell::from(status_str),
             ])
             .style(style)
@@ -76,21 +76,24 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(table, chunks[0]);
 
     let detail = if let Some(server) = app.servers.get(app.selected) {
-        let env_display = if server.env.is_empty() {
+        let env_display = if server.credential_fields().next().is_none() {
             "(none)".to_string()
         } else {
             server
-                .env
-                .keys()
-                .map(|k| format!("  {}=****", k))
+                .credential_fields()
+                .map(|(k, _)| format!("  {}=****", k))
                 .collect::<Vec<_>>()
                 .join("\n")
         };
         format!(
             "Name: {}\nCommand: {} {}\nClient: {}\nSource: {}\nEnv:\n{}",
             server.name,
-            server.command,
-            server.args.join(" "),
+            server.display_endpoint(),
+            format_args!(
+                "[{} arguments; {}]",
+                server.args.len(),
+                server.transport.label()
+            ),
             server.source_client,
             server.source_path.display(),
             env_display

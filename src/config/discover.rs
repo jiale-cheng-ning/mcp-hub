@@ -47,9 +47,11 @@ pub fn config_path_for(client: &ClientType) -> Option<PathBuf> {
         ClientType::ClaudeDesktop => {
             dirs::config_dir().map(|p| p.join("Claude").join("claude_desktop_config.json"))
         }
-        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude").join("settings.json")),
+        ClientType::ClaudeCode => dirs::home_dir().map(|p| p.join(".claude.json")),
         ClientType::Cursor => dirs::home_dir().map(|p| p.join(".cursor").join("mcp.json")),
-        ClientType::VSCode => dirs::home_dir().map(|p| p.join(".vscode").join("mcp.json")),
+        ClientType::VSCode => {
+            dirs::config_dir().map(|p| p.join("Code").join("User").join("mcp.json"))
+        }
         ClientType::Windsurf => {
             dirs::home_dir().map(|p| p.join(".codeium").join("windsurf").join("mcp_config.json"))
         }
@@ -69,6 +71,17 @@ pub fn known_config_paths() -> Vec<(ClientType, PathBuf)> {
         .iter()
         .filter_map(|c| config_path_for(c).map(|p| (c.clone(), p)))
         .collect();
+    if let Ok(cwd) = std::env::current_dir() {
+        for (client, relative) in [
+            (ClientType::VSCode, ".vscode/mcp.json"),
+            (ClientType::ClaudeCode, ".mcp.json"),
+        ] {
+            let path = cwd.join(relative);
+            if path.exists() {
+                paths.push((client, path));
+            }
+        }
+    }
     for p in dsh_config_paths() {
         paths.push((ClientType::DeepSeekHarness, p));
     }

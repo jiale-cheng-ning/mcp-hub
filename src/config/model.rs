@@ -1,3 +1,4 @@
+use super::transport::Transport;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -55,6 +56,7 @@ pub enum ServerStatus {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct ServerEntry {
+    pub transport: Transport,
     pub name: String,
     pub command: String,
     pub args: Vec<String>,
@@ -75,7 +77,11 @@ pub struct ExportData {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExportedServer {
+    #[serde(default)]
+    pub transport: Transport,
+    #[serde(default)]
     pub command: String,
+    #[serde(default)]
     pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub env: HashMap<String, String>,
@@ -83,13 +89,21 @@ pub struct ExportedServer {
 
 impl ExportData {
     pub fn from_servers(servers: &[ServerEntry]) -> Self {
+        Self::from_entries(servers, true)
+    }
+
+    pub fn for_sync(servers: &[ServerEntry]) -> Self {
+        Self::from_entries(servers, false)
+    }
+
+    fn from_entries(servers: &[ServerEntry], redact: bool) -> Self {
         let mut map: HashMap<String, ExportedServer> = HashMap::new();
         for server in servers {
             let redacted_env = server
                 .env
                 .iter()
                 .map(|(k, v)| {
-                    if has_secret_keyword(k) && !v.is_empty() {
+                    if redact && has_secret_keyword(k) && !v.is_empty() {
                         (k.clone(), format!("${{{}}}", k))
                     } else {
                         (k.clone(), v.clone())
@@ -99,13 +113,22 @@ impl ExportData {
             // Deduplicate: keep first occurrence
             map.entry(server.name.clone())
                 .or_insert_with(|| ExportedServer {
+                    transport: if redact {
+                        server.transport.redacted_for(&server.name)
+                    } else {
+                        server.transport.clone()
+                    },
                     command: server.command.clone(),
-                    args: server.args.clone(),
+                    args: if redact {
+                        redact_args(&server.args)
+                    } else {
+                        server.args.clone()
+                    },
                     env: redacted_env,
                 });
         }
         Self {
-            version: 1,
+            version: 2,
             exported_at: chrono_now(),
             servers: map,
         }
@@ -115,6 +138,13 @@ impl ExportData {
         let mut root = serde_json::Map::new();
         let mut mcp_servers = serde_json::Map::new();
         for (name, server) in &self.servers {
+            if let Some((url, headers)) = server.transport.endpoint() {
+                mcp_servers.insert(name.clone(), serde_json::json!({
+                    "type": if matches!(server.transport, Transport::Sse { .. }) { "sse" } else { "http" },
+                    "url": url, "headers": headers,
+                }));
+                continue;
+            }
             let mut entry = serde_json::Map::new();
             entry.insert(
                 "command".into(),
@@ -155,6 +185,9 @@ pub fn has_secret_keyword(name: &str) -> bool {
         "API_KEY",
         "ACCESS_KEY",
         "PRIVATE_KEY",
+        "AUTHORIZATION",
+        "COOKIE",
+        "CREDENTIAL",
     ]
     .iter()
     .any(|k| upper.contains(k))
@@ -169,6 +202,169 @@ fn chrono_now() -> String {
     format!("{}", secs)
 }
 
+fn redact_args(args: &[String]) -> Vec<String> {
+    let mut hide_next = false;
+    args.iter()
+        .map(|arg| {
+            if hide_next {
+                hide_next = false;
+                return "<redacted>".into();
+            }
+            if arg.starts_with('-') && has_secret_keyword(arg.split('=').next().unwrap_or(arg)) {
+                if let Some((flag, _)) = arg.split_once('=') {
+                    return format!("{flag}=<redacted>");
+                }
+                hide_next = true;
+                return arg.clone();
+            }
+            if arg.to_ascii_lowercase().contains("authorization:")
+                || arg.to_ascii_lowercase().contains("bearer ")
+            {
+                return "<redacted>".into();
+            }
+            if arg.starts_with("http://") || arg.starts_with("https://") {
+                return super::transport::redact_url(arg);
+            }
+            arg.clone()
+        })
+        .collect()
+}
+
+impl ServerEntry {
+    pub fn credential_fields(&self) -> impl Iterator<Item = (&String, &String)> {
+        self.env.iter().chain(
+            self.transport
+                .endpoint()
+                .into_iter()
+                .flat_map(|(_, headers)| headers.iter()),
+        )
+    }
+    pub fn display_endpoint(&self) -> String {
+        self.transport
+            .endpoint()
+            .map(|(url, _)| super::transport::redact_url(url))
+            .unwrap_or_else(|| self.command.clone())
+    }
+
+    pub fn redacted(&self) -> Self {
+        let mut entry = self.clone();
+        entry.transport = entry.transport.redacted();
+        for (key, value) in &mut entry.env {
+            if has_secret_keyword(key) && !value.is_empty() {
+                *value = "<redacted>".into();
+            }
+        }
+        // Arguments can contain credentials without identifiable field names.
+        entry.args = entry.args.iter().map(|_| "<argument>".into()).collect();
+        entry
+    }
+}
+
+impl ExportData {
+    pub fn resolve_references(&mut self) -> Result<(), String> {
+        use super::transport::expand_env;
+        if self.version != 1 && self.version != 2 {
+            return Err("Unsupported export format version".into());
+        }
+        for server in self.servers.values_mut() {
+            for value in server.env.values_mut() {
+                *value = expand_env(value)?;
+            }
+            for value in &mut server.args {
+                *value = expand_env(value)?;
+            }
+            server.command = expand_env(&server.command)?;
+            match &mut server.transport {
+                Transport::Stdio => {}
+                Transport::StreamableHttp { url, headers } | Transport::Sse { url, headers } => {
+                    *url = expand_env(url)?;
+                    for value in headers.values_mut() {
+                        *value = expand_env(value)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn config_for(&self, client: &ClientType) -> Result<serde_json::Value, String> {
+        if self.version != 1 && self.version != 2 {
+            return Err("Unsupported export format version".into());
+        }
+        for server in self.servers.values() {
+            if let Some((url, headers)) = server.transport.endpoint() {
+                if !server.command.is_empty() || !server.args.is_empty() || !server.env.is_empty() {
+                    return Err("Remote config cannot contain command/args/env".into());
+                }
+                if !url.contains("${") {
+                    let parsed = url::Url::parse(url).map_err(|_| "Invalid remote URL")?;
+                    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+                        return Err("Remote URL must use HTTP(S)".into());
+                    }
+                }
+                for (key, value) in headers {
+                    if key.is_empty()
+                        || !key
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+                        || value.contains(['\r', '\n'])
+                    {
+                        return Err("Invalid HTTP header".into());
+                    }
+                }
+            } else if server.command.trim().is_empty()
+                || server.command.starts_with("http://")
+                || server.command.starts_with("https://")
+            {
+                return Err("stdio config requires an executable command, not a URL".into());
+            }
+        }
+        if matches!(client, ClientType::ClaudeDesktop)
+            && self
+                .servers
+                .values()
+                .any(|s| !matches!(s.transport, Transport::Stdio))
+        {
+            return Err("Claude Desktop file supports local stdio only; configure remote connectors in the app".into());
+        }
+        let mut config = self.to_config_json();
+        for server in config["mcpServers"].as_object_mut().unwrap().values_mut() {
+            if let Some(url) = server.get_mut("url") {
+                *url = super::transport::adapt_references(url.as_str().unwrap(), client)?.into();
+            }
+            for field in ["env", "headers"] {
+                if let Some(values) = server.get_mut(field).and_then(|v| v.as_object_mut()) {
+                    for value in values.values_mut() {
+                        *value =
+                            super::transport::adapt_references(value.as_str().unwrap(), client)?
+                                .into();
+                    }
+                }
+            }
+        }
+        if matches!(client, ClientType::VSCode) {
+            let mut servers = config["mcpServers"].take();
+            for server in servers.as_object_mut().unwrap().values_mut() {
+                if server.get("type").is_none() {
+                    server["type"] = "stdio".into();
+                }
+            }
+            config = serde_json::json!({"servers": servers});
+        } else if matches!(client, ClientType::Windsurf) {
+            for server in config["mcpServers"].as_object_mut().unwrap().values_mut() {
+                if let Some(url) = server.as_object_mut().unwrap().remove("url") {
+                    if server["type"] == "sse" {
+                        return Err("Legacy SSE migration to Windsurf is not supported".into());
+                    }
+                    server.as_object_mut().unwrap().remove("type");
+                    server["serverUrl"] = url;
+                }
+            }
+        }
+        Ok(config)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,6 +376,7 @@ mod tests {
         env: HashMap<String, String>,
     ) -> ServerEntry {
         ServerEntry {
+            transport: crate::config::transport::Transport::Stdio,
             name: name.into(),
             command: cmd.into(),
             args: args.into_iter().map(String::from).collect(),
@@ -232,7 +429,7 @@ mod tests {
         let export = ExportData::from_servers(&servers);
         let json_str = serde_json::to_string(&export).unwrap();
         let parsed: ExportData = serde_json::from_str(&json_str).unwrap();
-        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.version, 2);
         assert!(parsed.servers.contains_key("gh"));
     }
 

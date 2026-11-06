@@ -23,7 +23,10 @@ pub fn run(client_filter: Option<&str>, json: bool) {
     if json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&filtered).unwrap_or_default()
+            serde_json::to_string_pretty(
+                &filtered.iter().map(|e| e.redacted()).collect::<Vec<_>>()
+            )
+            .unwrap_or_default()
         );
         return;
     }
@@ -53,7 +56,7 @@ pub fn run(client_filter: Option<&str>, json: bool) {
             "{:<20} {:<20} {:<40} {}",
             entry.name,
             format!("{}", entry.source_client),
-            entry.command,
+            format!("{}: {}", entry.transport.label(), entry.display_endpoint()),
             status
         );
     }

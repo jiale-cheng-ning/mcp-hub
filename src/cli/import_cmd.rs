@@ -12,7 +12,7 @@ pub fn run(file: &str, target: Option<&str>) {
         }
     };
 
-    let export: ExportData = match serde_json::from_str(&content) {
+    let mut export: ExportData = match serde_json::from_str(&content) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("Invalid export file: {}", e);
@@ -53,91 +53,17 @@ pub fn run(file: &str, target: Option<&str>) {
         }
     };
 
-    if matches!(client, ClientType::DeepSeekHarness) {
-        let servers: Vec<crate::config::parser::DshServerSpec> = export
-            .servers
-            .iter()
-            .map(|(name, s)| {
-                (
-                    name.clone(),
-                    s.command.clone(),
-                    s.args.clone(),
-                    s.env.clone(),
-                )
-            })
-            .collect();
-        match crate::config::parser::append_dsh_servers(&config_path, &servers) {
-            Ok((imported, skipped)) => {
-                println!(
-                    "\nImported {} server(s) to {} ({})",
-                    imported,
-                    client,
-                    config_path.display()
-                );
-                if skipped > 0 {
-                    println!("Skipped {} existing server(s)", skipped);
-                }
-            }
-            Err(e) => eprintln!("Failed to write {}: {}", config_path.display(), e),
-        }
+    if let Err(error) = export.resolve_references() {
+        eprintln!(
+            "Import failed: {}. Supply credentials using the named environment variables.",
+            error
+        );
         return;
     }
-
-    // Read existing config or create empty
-    let mut existing = match crate::config::safe_io::read_json_config(&config_path) {
-        Ok(value) => value,
-        Err(e) => {
-            eprintln!("Refusing to overwrite invalid or unreadable config: {}", e);
-            return;
+    match crate::config::write::merge(&config_path, &client, &export, false) {
+        Ok((added, skipped)) => {
+            println!("Imported {} server(s), {} existing skipped", added, skipped)
         }
-    };
-
-    let config_json = export.to_config_json();
-    let new_servers = config_json
-        .get("mcpServers")
-        .and_then(|v| v.as_object())
-        .cloned()
-        .unwrap_or_default();
-
-    let existing_servers = existing
-        .get_mut("mcpServers")
-        .and_then(|v| v.as_object_mut())
-        .unwrap();
-
-    let mut imported = 0;
-    let mut skipped = 0;
-
-    for (name, server_val) in &new_servers {
-        if existing_servers.contains_key(name) {
-            skipped += 1;
-            println!("  ⏭ {} (already exists, skipped)", name);
-        } else {
-            existing_servers.insert(name.clone(), server_val.clone());
-            imported += 1;
-            println!("  ✓ {}", name);
-        }
-    }
-
-    // Write back
-    let output = serde_json::to_string_pretty(&existing).unwrap_or_default();
-    // Ensure parent directory exists
-    if let Some(parent) = config_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match crate::config::safe_io::write_config_atomic(&config_path, &output) {
-        Ok(()) => {
-            println!(
-                "\nImported {} server(s) to {} ({})",
-                imported,
-                client,
-                config_path.display()
-            );
-            if skipped > 0 {
-                println!("Skipped {} existing server(s)", skipped);
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to write {}: {}", config_path.display(), e);
-        }
+        Err(error) => eprintln!("Import failed: {}", error),
     }
 }

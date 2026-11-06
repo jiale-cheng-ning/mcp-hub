@@ -4,6 +4,11 @@
 
 **One TUI to manage all your MCP servers.**
 
+`doctor` and `bench` support modern MCP 2026-07-28 and legacy stdio/Streamable HTTP
+servers, with JSON and request-scoped SSE replies. Configuration migration preserves
+transport fields and redacts exported credentials. See the
+[compatibility guide](docs/compatibility.md) for supported formats, limits and tests.
+
 `sync` and `import` refuse unreadable or malformed destination configs. Writes
 use a temporary file and atomic replacement, with a uniquely named
 `<config>.<process>.<id>.bak` backup of each existing destination. Backups can

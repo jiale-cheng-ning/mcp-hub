@@ -1,181 +1,115 @@
 use crate::config::discover::discover;
-use crate::config::model::ServerStatus;
 use crate::health::mcp_check::{self, BenchResult};
 use std::time::Duration;
 
 pub fn run(server_filter: Option<&str>, rounds: usize, json: bool, timeout_secs: u64) {
-    let entries = discover().unwrap_or_else(|e| {
-        eprintln!("Warning: {}", e);
-        Vec::new()
-    });
-
-    if entries.is_empty() {
-        println!("No MCP servers found to benchmark.");
+    if rounds == 0 || rounds > 100 {
+        eprintln!("Rounds must be between 1 and 100");
         return;
     }
-
-    let filtered: Vec<_> = entries
-        .iter()
-        .filter(|s| {
-            if let Some(filter) = server_filter {
-                s.name.to_lowercase().contains(&filter.to_lowercase())
-            } else {
-                true
-            }
-        })
-        .collect();
-
-    if filtered.is_empty() {
-        println!("No servers match filter '{}'.", server_filter.unwrap_or(""));
-        return;
-    }
-
-    let timeout = Duration::from_secs(timeout_secs);
-
-    if !json {
-        println!(
-            "Benchmarking {} MCP server(s), {} round(s) each...\n",
-            filtered.len(),
-            rounds
-        );
-    }
-
-    // Run all servers in parallel threads
-    let handles: Vec<_> = filtered
-        .iter()
-        .map(|server| {
-            let name = server.name.clone();
-            let command = server.command.clone();
-            let args = server.args.clone();
-            let env = server.env.clone();
-            let status_err = matches!(server.status, ServerStatus::ParseError(_));
-            let is_empty_cmd = command.is_empty();
-
+    let entries = match discover() {
+        Ok(entries) => entries,
+        Err(_) => {
+            eprintln!("Unable to discover server configs");
+            return;
+        }
+    };
+    let handles: Vec<_> = entries
+        .into_iter()
+        .filter(|s| server_filter.is_none_or(|f| s.name.to_lowercase().contains(&f.to_lowercase())))
+        .map(|entry| {
             std::thread::spawn(move || {
-                if status_err || is_empty_cmd {
-                    return Vec::new();
-                }
-                let mut server_rounds = Vec::new();
-                for _ in 0..rounds {
-                    let result = mcp_check::bench_server(&name, &command, &args, &env, timeout);
-                    server_rounds.push(result);
-                }
-                server_rounds
+                (0..rounds)
+                    .map(|_| mcp_check::bench_entry(&entry, Duration::from_secs(timeout_secs)))
+                    .collect::<Vec<_>>()
             })
         })
         .collect();
-
-    let all_results: Vec<Vec<BenchResult>> = handles
-        .into_iter()
-        .map(|h| h.join().unwrap_or_default())
-        .filter(|r| !r.is_empty())
-        .collect();
-
-    if !json {
-        for server_rounds in &all_results {
-            print_bench_result(server_rounds);
+    let mut output = Vec::new();
+    for handle in handles {
+        match handle.join() {
+            Ok(results) => output.push(summarize(&results)),
+            Err(_) => {
+                output.push(serde_json::json!({"status":"failed","error":"probe worker failed"}))
+            }
         }
     }
-
     if json {
-        let json_output: Vec<serde_json::Value> = all_results
-            .iter()
-            .map(|rounds| {
-                let first = &rounds[0];
-                let spawn_avg = avg_field(rounds, |r| r.spawn_ms);
-                let init_avg = avg_field(rounds, |r| r.init_ms);
-                let tools_avg = avg_field(rounds, |r| r.tools_list_ms);
-                let total_avg = avg_field(rounds, |r| r.total_ms);
-                let total_min = rounds.iter().map(|r| r.total_ms).min().unwrap_or(0);
-                let total_max = rounds.iter().map(|r| r.total_ms).max().unwrap_or(0);
-
-                serde_json::json!({
-                    "server": first.server_name,
-                    "status": first.status,
-                    "tools_count": first.tools_count,
-                    "rounds": rounds.len(),
-                    "spawn_ms": {"avg": spawn_avg},
-                    "init_ms": {"avg": init_avg, "min": rounds.iter().map(|r| r.init_ms).min(), "max": rounds.iter().map(|r| r.init_ms).max()},
-                    "tools_list_ms": {"avg": tools_avg},
-                    "total_ms": {"avg": total_avg, "min": total_min, "max": total_max},
-                    "error": first.error,
-                })
-            })
-            .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json_output).unwrap_or_default()
-        );
-    } else if !all_results.is_empty() {
-        print_summary(&all_results);
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    } else {
+        for result in output {
+            println!(
+                "  {}: {} ({} successful, {} failed); total avg: {}ms; tools: {}",
+                result["server"].as_str().unwrap_or("unknown"),
+                result["status"].as_str().unwrap_or("failed"),
+                result["successful_rounds"],
+                result["failed_rounds"],
+                result["total_ms"]["avg"],
+                result["tools_count"]
+            );
+            if let Some(errors) = result["errors"].as_array() {
+                for error in errors {
+                    println!("    {}", error.as_str().unwrap_or("check failed"));
+                }
+            }
+        }
     }
 }
 
-fn print_bench_result(rounds: &[BenchResult]) {
-    let first = &rounds[0];
-    if first.status == "failed" || first.status == "init_error" {
-        println!(
-            "  {:<20} spawn: {}ms  — {} ({})",
-            first.server_name,
-            first.spawn_ms,
-            first.status.to_uppercase(),
-            first.error.as_deref().unwrap_or("unknown")
-        );
-        return;
-    }
-    if first.status == "timeout" {
-        println!(
-            "  {:<20} spawn: {}ms  init: TIMEOUT — SKIPPED",
-            first.server_name, first.spawn_ms
-        );
-        return;
-    }
-
-    let spawn_avg = avg_field(rounds, |r| r.spawn_ms);
-    let init_avg = avg_field(rounds, |r| r.init_ms);
-    let tools_avg = avg_field(rounds, |r| r.tools_list_ms);
-    let total_avg = avg_field(rounds, |r| r.total_ms);
-    let tools_count = first.tools_count;
-
-    println!(
-        "  {:<20} spawn: {:>4}ms  init: {:>4}ms  tools/list: {:>4}ms  total: {:>4}ms  ({} tools)",
-        first.server_name, spawn_avg, init_avg, tools_avg, total_avg, tools_count
-    );
+fn summarize(rounds: &[BenchResult]) -> serde_json::Value {
+    let good: Vec<_> = rounds.iter().filter(|r| r.status == "ok").collect();
+    let failures = rounds.len() - good.len();
+    let status = if good.is_empty() {
+        rounds
+            .first()
+            .filter(|first| rounds.iter().all(|r| r.status == first.status))
+            .map(|first| first.status.as_str())
+            .unwrap_or("failed")
+    } else if failures > 0 {
+        "partial"
+    } else {
+        "ok"
+    };
+    let metrics = |f: fn(&BenchResult) -> u64| {
+        if good.is_empty() {
+            return serde_json::Value::Null;
+        }
+        let values: Vec<_> = good.iter().map(|r| f(r)).collect();
+        serde_json::json!({"avg":values.iter().sum::<u64>()/values.len() as u64,"min":values.iter().min(),"max":values.iter().max()})
+    };
+    serde_json::json!({
+        "server":rounds.first().map(|r|r.server_name.as_str()).unwrap_or("unknown"),
+        "status":status,"rounds":rounds.len(),"successful_rounds":good.len(),"failed_rounds":failures,
+        "spawn_ms":metrics(|r|r.spawn_ms),"init_ms":metrics(|r|r.init_ms),
+        "tools_list_ms":metrics(|r|r.tools_list_ms),"total_ms":metrics(|r|r.total_ms),
+        "tools_count":good.last().map(|r|r.tools_count),
+        "errors":rounds.iter().filter_map(|r|r.error.as_ref()).collect::<Vec<_>>(),
+        "round_statuses":rounds.iter().map(|r|r.status.as_str()).collect::<Vec<_>>(),
+    })
 }
-
-fn print_summary(all_results: &[Vec<BenchResult>]) {
-    let successful: Vec<_> = all_results
-        .iter()
-        .filter(|r| r.first().is_some_and(|f| f.status == "ok"))
-        .collect();
-
-    if successful.is_empty() {
-        println!("\nNo servers responded successfully.");
-        return;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn mixed_rounds_use_only_successful_timings() {
+        let mut good = BenchResult {
+            server_name: "test".into(),
+            spawn_ms: 1,
+            init_ms: 2,
+            tools_list_ms: 3,
+            total_ms: 10,
+            tools_count: 2,
+            status: "ok".into(),
+            error: None,
+        };
+        let mut bad = good.clone();
+        bad.total_ms = 1000;
+        bad.status = "failed".into();
+        bad.error = Some("mock failure".into());
+        let result = summarize(&[bad.clone(), good.clone()]);
+        assert_eq!(result["status"], "partial");
+        assert_eq!(result["total_ms"]["avg"], 10);
+        good.status = "failed".into();
+        assert!(summarize(&[bad, good])["total_ms"].is_null());
     }
-
-    let mut by_total: Vec<_> = successful
-        .iter()
-        .map(|r| {
-            let avg = avg_field(r, |x| x.total_ms);
-            (&r[0].server_name, avg)
-        })
-        .collect();
-    by_total.sort_by_key(|(_, avg)| *avg);
-
-    println!("\n  Summary:");
-    if let Some((name, ms)) = by_total.first() {
-        println!("    Fastest:  {} ({}ms avg)", name, ms);
-    }
-    if let Some((name, ms)) = by_total.last() {
-        println!("    Slowest:  {} ({}ms avg)", name, ms);
-    }
-}
-
-fn avg_field(rounds: &[BenchResult], f: impl Fn(&BenchResult) -> u64) -> u64 {
-    if rounds.is_empty() {
-        return 0;
-    }
-    let sum: u64 = rounds.iter().map(&f).sum();
-    sum / rounds.len() as u64
 }

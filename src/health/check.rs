@@ -29,6 +29,11 @@ impl fmt::Display for HealthStatus {
 
 #[allow(dead_code)]
 pub fn check_process(server: &ServerEntry) -> HealthStatus {
+    if !matches!(server.transport, crate::config::transport::Transport::Stdio)
+        || server.command.is_empty()
+    {
+        return HealthStatus::Unknown;
+    }
     let sys = System::new_all();
     let cmd_name = std::path::Path::new(&server.command)
         .file_stem()
@@ -69,6 +74,7 @@ mod tests {
 
     fn make_server(name: &str, cmd: &str) -> ServerEntry {
         ServerEntry {
+            transport: crate::config::transport::Transport::Stdio,
             name: name.to_string(),
             command: cmd.to_string(),
             args: vec![],

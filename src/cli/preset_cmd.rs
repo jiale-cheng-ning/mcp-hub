@@ -87,170 +87,36 @@ fn install_preset(name: &str, target: Option<&str>) {
         }
     };
 
-    if matches!(target_client, ClientType::DeepSeekHarness) {
-        install_preset_dsh(name, &preset);
+    let Some(path) = config_path_for(&target_client) else {
+        eprintln!("Could not determine destination config path");
         return;
-    }
-
-    let config_path = match config_path_for(&target_client) {
-        Some(p) => p,
-        None => {
-            eprintln!("Could not determine config path for {}", target_client);
-            return;
-        }
     };
-
-    // Read existing config or create empty
-    let mut existing: serde_json::Value = if config_path.exists() {
-        std::fs::read_to_string(&config_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| serde_json::json!({ "mcpServers": {} }))
-    } else {
-        serde_json::json!({ "mcpServers": {} })
-    };
-
-    if existing.get("mcpServers").is_none() {
-        existing["mcpServers"] = serde_json::json!({});
-    }
-
-    let servers = existing
-        .get_mut("mcpServers")
-        .and_then(|v| v.as_object_mut())
-        .unwrap();
-
-    println!("Installing preset '{}' to {}...\n", name, target_client);
-
-    let mut installed = 0;
-    let mut skipped = 0;
-
-    for (server_name, server_def) in &preset.servers {
-        if servers.contains_key(server_name) {
-            println!("  ⏭  {} (already exists)", server_name);
-            skipped += 1;
-            continue;
-        }
-
-        let mut entry = serde_json::Map::new();
-        entry.insert("command".into(), serde_json::Value::String("npx".into()));
-        entry.insert("args".into(), serde_json::json!(server_def.args));
-
-        // Add env vars as placeholders
-        if !server_def.env.is_empty() {
-            let env_map: serde_json::Map<String, serde_json::Value> = server_def
-                .env
-                .iter()
-                .map(|k| (k.clone(), serde_json::Value::String(format!("${{{}}}", k))))
-                .collect();
-            entry.insert("env".into(), serde_json::Value::Object(env_map));
-        }
-
-        servers.insert(server_name.clone(), serde_json::Value::Object(entry));
-        println!("  ✓  {}", server_name);
-        installed += 1;
-    }
-
-    // Write config
-    if let Some(parent) = config_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let output = serde_json::to_string_pretty(&existing).unwrap_or_default();
-    match std::fs::write(&config_path, &output) {
-        Ok(()) => {
-            println!(
-                "\nDone! Installed {} server(s), skipped {} (already exist).",
-                installed, skipped
-            );
-            println!("Config written to: {}", config_path.display());
-            println!("\nRestart {} to load the new servers.", target_client);
-
-            // Remind about env vars
-            let env_vars: Vec<&str> = preset
-                .servers
-                .values()
-                .flat_map(|s| s.env.iter())
-                .map(|s| s.as_str())
-                .collect();
-            if !env_vars.is_empty() {
-                println!(
-                    "\n⚠  Set these environment variables before using:\n   {}",
-                    env_vars.join(", ")
-                );
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to write config: {}", e);
-        }
-    }
-}
-
-fn install_preset_dsh(preset_name: &str, preset: &crate::preset::Preset) {
-    let config_path = match crate::config::discover::dsh_primary_config_path() {
-        Some(p) => p,
-        None => {
-            eprintln!("Could not determine DeepSeek Harness home");
-            return;
-        }
-    };
-
-    println!(
-        "Installing preset '{}' to DeepSeek Harness...\n",
-        preset_name
-    );
-
-    let servers: Vec<crate::config::parser::DshServerSpec> = preset
+    let servers = preset
         .servers
         .iter()
         .map(|(name, def)| {
-            let env = def
-                .env
-                .iter()
-                .map(|k| (k.clone(), format!("${{{}}}", k)))
-                .collect();
-            (name.clone(), "npx".into(), def.args.clone(), env)
+            (
+                name.clone(),
+                crate::config::model::ExportedServer {
+                    transport: crate::config::transport::Transport::Stdio,
+                    command: "npx".into(),
+                    args: def.args.clone(),
+                    env: def
+                        .env
+                        .iter()
+                        .map(|key| (key.clone(), format!("${{{}}}", key)))
+                        .collect(),
+                },
+            )
         })
         .collect();
-
-    // Report already-present names the same way as the JSON path.
-    let existing = std::fs::read_to_string(&config_path).unwrap_or_default();
-    for name in servers
-        .iter()
-        .filter(|(name, _, _, _)| {
-            existing.contains(&format!("serverName: {name}"))
-                || existing.contains(&format!("serverName: '{name}'"))
-        })
-        .map(|(name, _, _, _)| name)
-    {
-        println!("  ⏭  {} (already exists)", name);
-    }
-
-    match crate::config::parser::append_dsh_servers(&config_path, &servers) {
-        Ok((installed, skipped)) => {
-            for (name, _, _, _) in servers.iter().filter(|(name, _, _, _)| {
-                !(existing.contains(&format!("serverName: {name}"))
-                    || existing.contains(&format!("serverName: '{name}'")))
-            }) {
-                println!("  ✓  {}", name);
-            }
-            println!(
-                "\nDone! Installed {} server(s), skipped {} (already exist).",
-                installed, skipped
-            );
-            println!("Config written to: {}", config_path.display());
-            println!("\nRestart DeepSeek Harness to load the new servers.");
-            let env_vars: Vec<&str> = preset
-                .servers
-                .values()
-                .flat_map(|s| s.env.iter())
-                .map(|s| s.as_str())
-                .collect();
-            if !env_vars.is_empty() {
-                println!(
-                    "\n⚠  Set these environment variables before using:\n   {}",
-                    env_vars.join(", ")
-                );
-            }
-        }
-        Err(e) => eprintln!("Failed to write config: {}", e),
+    let export = crate::config::model::ExportData {
+        version: 2,
+        exported_at: String::new(),
+        servers,
+    };
+    match crate::config::write::merge(&path,&target_client,&export,false) {
+        Ok((added,skipped))=>println!("Installed {} server(s), {} existing skipped. Configure referenced environment variables before use.",added,skipped),
+        Err(error)=>eprintln!("Preset installation failed: {}",error),
     }
 }

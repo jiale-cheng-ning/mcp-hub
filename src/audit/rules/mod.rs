@@ -243,8 +243,7 @@ impl AuditRule for EnvPlaintextSecret {
             .iter()
             .flat_map(|server| {
                 server
-                    .env
-                    .iter()
+                    .credential_fields()
                     .filter_map(|(name, value)| {
                         if has_secret_keyword(name) && !value.is_empty() {
                             Some(Finding {
@@ -287,7 +286,9 @@ impl AuditRule for WorldReadableSecret {
         let mut checked_paths = std::collections::HashSet::new();
 
         for server in ctx.servers {
-            let has_secrets = server.env.keys().any(|k| has_secret_keyword(k));
+            let has_secrets = server
+                .credential_fields()
+                .any(|(k, _)| has_secret_keyword(k));
             if !has_secrets {
                 continue;
             }
@@ -538,7 +539,8 @@ impl AuditRule for DuplicateServer {
         let servers = ctx.servers;
         for i in 0..servers.len() {
             for j in (i + 1)..servers.len() {
-                if servers[i].command == servers[j].command
+                if servers[i].transport == servers[j].transport
+                    && servers[i].command == servers[j].command
                     && servers[i].args == servers[j].args
                     && servers[i].source_client != servers[j].source_client
                 {
@@ -985,6 +987,7 @@ mod tests {
         env: HashMap<String, String>,
     ) -> ServerEntry {
         ServerEntry {
+            transport: crate::config::transport::Transport::Stdio,
             name: name.into(),
             command: cmd.into(),
             args: args.into_iter().map(String::from).collect(),

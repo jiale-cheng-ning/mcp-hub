@@ -17,3 +17,10 @@ dirs = "6"
 ureq = "2"
 urlencoding = "2"
 serde_yaml = "0.9"
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

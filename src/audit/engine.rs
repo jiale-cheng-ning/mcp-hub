@@ -14,6 +14,21 @@ pub fn run_audit(servers: &[crate::config::model::ServerEntry]) -> Vec<Finding> 
     for rule in all_rules() {
         all_findings.extend(rule.check(&ctx));
     }
+    for server in servers {
+        if matches!(
+            server.transport,
+            crate::config::transport::Transport::Sse { .. }
+        ) {
+            all_findings.push(Finding {
+                rule_id: "LEGACY_SSE_TRANSPORT".into(),
+                severity: Severity::Info,
+                server_name: server.name.clone(),
+                message: "Legacy HTTP+SSE transport is deprecated; active probing is unsupported"
+                    .into(),
+                fix: "Configure a Streamable HTTP endpoint from the server publisher".into(),
+            });
+        }
+    }
 
     // Sort by severity (Critical first), then by server name
     all_findings.sort_by(|a, b| {

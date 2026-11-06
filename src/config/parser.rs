@@ -1,94 +1,148 @@
 use crate::config::model::{ClientType, ServerEntry, ServerStatus};
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// (name, command, args, env) for a stdio MCP server written to DSH YAML.
 pub type DshServerSpec = (String, String, Vec<String>, HashMap<String, String>);
 
-#[derive(Deserialize)]
-struct RawServerConfig {
-    command: Option<String>,
-    #[serde(default)]
-    args: Vec<String>,
-    #[serde(default)]
-    env: HashMap<String, String>,
-}
-
-#[derive(Deserialize)]
-struct RawConfig {
-    #[serde(rename = "mcpServers", default)]
-    mcp_servers: HashMap<String, RawServerConfig>,
-}
-
 pub fn parse_config(
     json: &str,
     client: ClientType,
     source_path: PathBuf,
 ) -> Result<Vec<ServerEntry>, serde_json::Error> {
-    let raw: RawConfig = serde_json::from_str(json)?;
-    let entries = raw
-        .mcp_servers
-        .into_iter()
-        .map(|(name, cfg)| {
-            let (command, status) = match cfg.command {
-                Some(cmd) => (cmd, ServerStatus::Active),
-                None => (
-                    String::new(),
-                    ServerStatus::ParseError("missing 'command' field".into()),
-                ),
-            };
-            ServerEntry {
-                name,
-                command,
-                args: cfg.args,
-                env: cfg.env,
-                source_client: client.clone(),
-                source_path: source_path.clone(),
-                status,
-            }
-        })
-        .collect();
-    Ok(entries)
+    let value: serde_json::Value = serde_json::from_str(json)?;
+    let bucket = if matches!(client, ClientType::VSCode) && value.get("servers").is_some() {
+        "servers"
+    } else {
+        "mcpServers"
+    };
+    let Some(servers) = value.get(bucket) else {
+        return Ok(Vec::new());
+    };
+    let servers = servers.as_object().ok_or_else(|| {
+        <serde_json::Error as serde::de::Error>::custom("Server collection must be an object")
+    })?;
+    Ok(servers
+        .iter()
+        .map(|(name, cfg)| server_from_value(name, cfg, &client, &source_path))
+        .collect())
 }
 
-/// Strip Cordis `!!js` / custom YAML tags so expressions become plain strings.
-/// Needed because DSH configs use `!!js process.env.FOO` style values.
-fn strip_yaml_tags(content: &str) -> String {
-    let mut out = String::with_capacity(content.len());
-    for line in content.lines() {
-        if let Some(idx) = line.find("!!") {
-            let before = &line[..idx];
-            let after = &line[idx..];
-            // Drop the tag token; keep the rest of the scalar as a plain string.
-            let rest = match after.find(char::is_whitespace) {
-                Some(sp) => {
-                    let value = after[sp..].trim_start();
-                    if value.is_empty()
-                        || value == ">-"
-                        || value == ">"
-                        || value == "|"
-                        || value == "|-"
-                    {
-                        after[sp..].to_string()
-                    } else {
-                        format!(" {}", value)
-                    }
-                }
-                None => String::new(),
-            };
-            out.push_str(before.trim_end());
-            out.push_str(&rest);
-        } else {
-            out.push_str(line);
+fn server_from_value(
+    name: &str,
+    cfg: &serde_json::Value,
+    client: &ClientType,
+    path: &std::path::Path,
+) -> ServerEntry {
+    use crate::config::transport::Transport;
+    let mut entry = ServerEntry {
+        transport: Transport::Stdio,
+        name: name.into(),
+        command: String::new(),
+        args: Vec::new(),
+        env: HashMap::new(),
+        source_client: client.clone(),
+        source_path: path.into(),
+        status: ServerStatus::Active,
+    };
+    type ParsedFields = (Transport, String, Vec<String>, HashMap<String, String>);
+    let parse = || -> Result<ParsedFields, String> {
+        if cfg.as_object().is_none_or(|object| {
+            object.keys().any(|key| {
+                ![
+                    "command",
+                    "args",
+                    "env",
+                    "transport",
+                    "type",
+                    "url",
+                    "serverUrl",
+                    "headers",
+                    "disabled",
+                    "serverName",
+                    "description",
+                ]
+                .contains(&key.as_str())
+            })
+        }) {
+            return Err("Unsupported server setting; refusing to silently discard it".into());
         }
-        out.push('\n');
+        let kind = cfg
+            .get("transport")
+            .or_else(|| cfg.get("type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(
+                if cfg.get("url").is_some() || cfg.get("serverUrl").is_some() {
+                    "http"
+                } else {
+                    "stdio"
+                },
+            );
+        if kind == "stdio" {
+            let cmd = cfg
+                .get("command")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .ok_or("missing 'command' field")?
+                .to_string();
+            if cmd.starts_with("http://") || cmd.starts_with("https://") {
+                return Err("A URL is not an executable; use an HTTP transport".into());
+            }
+            let args =
+                serde_json::from_value(cfg.get("args").cloned().unwrap_or(serde_json::json!([])))
+                    .map_err(|_| "args must be a string array")?;
+            let env =
+                serde_json::from_value(cfg.get("env").cloned().unwrap_or(serde_json::json!({})))
+                    .map_err(|_| "env must be a string map")?;
+            return Ok((Transport::Stdio, cmd, args, env));
+        }
+        if !matches!(kind, "http" | "streamable-http" | "sse") {
+            return Err("Unsupported transport type".into());
+        }
+        if cfg.get("command").is_some() || cfg.get("env").is_some() || cfg.get("args").is_some() {
+            return Err("Remote transport cannot contain command/args/env".into());
+        }
+        let url = cfg
+            .get("url")
+            .or_else(|| cfg.get("serverUrl"))
+            .and_then(|v| v.as_str())
+            .ok_or("missing 'url' field")?
+            .to_string();
+        // References are expanded before connection/import; validate literal URLs now.
+        if !url.contains("${") {
+            let parsed = url::Url::parse(&url).map_err(|_| "Invalid remote URL")?;
+            if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+                return Err("Remote URL must use HTTP(S)".into());
+            }
+        }
+        let headers =
+            serde_json::from_value(cfg.get("headers").cloned().unwrap_or(serde_json::json!({})))
+                .map_err(|_| "headers must be a string map")?;
+        let transport = if kind == "sse" {
+            Transport::Sse { url, headers }
+        } else {
+            Transport::StreamableHttp { url, headers }
+        };
+        Ok((transport, String::new(), Vec::new(), HashMap::new()))
+    };
+    match parse() {
+        Ok((transport, command, args, env)) => {
+            entry.transport = transport;
+            entry.command = command;
+            entry.args = args;
+            entry.env = env;
+        }
+        Err(error) => entry.status = ServerStatus::ParseError(error),
     }
-    out
+    if cfg.get("disabled").and_then(|v| v.as_bool()) == Some(true) {
+        entry.status = ServerStatus::Disabled;
+    }
+    entry
 }
 
 fn yaml_string(v: &serde_yaml::Value) -> Option<String> {
     match v {
+        serde_yaml::Value::Tagged(tagged) => yaml_string(&tagged.value),
         serde_yaml::Value::String(s) => Some(s.clone()),
         serde_yaml::Value::Number(n) => Some(n.to_string()),
         serde_yaml::Value::Bool(b) => Some(b.to_string()),
@@ -109,6 +163,13 @@ fn yaml_env(v: &serde_yaml::Value) -> HashMap<String, String> {
     if let serde_yaml::Value::Mapping(m) = v {
         for (k, val) in m {
             if let (Some(key), Some(s)) = (yaml_string(k), yaml_string(val)) {
+                let s = if let Some(variable) = s.strip_prefix("process.env.").filter(|s| {
+                    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                }) {
+                    format!("${{{variable}}}")
+                } else {
+                    s
+                };
                 map.insert(key, s);
             }
         }
@@ -171,41 +232,56 @@ fn collect_dsh_mcp_entries(
                         .unwrap_or_else(|| "dsh-mcp".into())
                 });
 
-            let transport = get("transport").as_str().unwrap_or("stdio").to_string();
-            let (command, args, env, status) = if transport == "stdio" || get("command").is_string()
-            {
-                let command = yaml_string(&get("command")).unwrap_or_default();
-                let status = if command.is_empty() {
-                    ServerStatus::ParseError("missing 'command' field".into())
-                } else {
-                    ServerStatus::Active
-                };
-                (
-                    command,
-                    yaml_args(&get("args")),
-                    yaml_env(&get("env")),
-                    status,
-                )
-            } else {
-                // streamable-http: surface URL as command so scan/audit still see something
-                let url = yaml_string(&get("url")).unwrap_or_default();
-                let status = if url.is_empty() {
-                    ServerStatus::ParseError("missing 'url' field".into())
-                } else {
-                    ServerStatus::Active
-                };
-                (url, Vec::new(), yaml_env(&get("headers")), status)
-            };
-
-            entries.push(ServerEntry {
-                name: server_name,
-                command,
-                args,
-                env,
-                source_client: client.clone(),
-                source_path: source_path.clone(),
-                status,
+            let mut json = serde_json::Map::new();
+            for key in ["command", "url", "transport"] {
+                if let Some(value) = yaml_string(&get(key)) {
+                    json.insert(key.into(), value.into());
+                }
+            }
+            if get("args").is_sequence() {
+                json.insert("args".into(), serde_json::json!(yaml_args(&get("args"))));
+            }
+            for key in ["env", "headers"] {
+                if get(key).is_mapping() {
+                    json.insert(key.into(), serde_json::json!(yaml_env(&get(key))));
+                }
+            }
+            let mut entry = server_from_value(&server_name, &json.into(), client, source_path);
+            let unknown = cfg_map.keys().any(|key| {
+                !key.as_str().is_some_and(|key| {
+                    [
+                        "serverName",
+                        "transport",
+                        "command",
+                        "args",
+                        "env",
+                        "url",
+                        "headers",
+                        "disabled",
+                    ]
+                    .contains(&key)
+                })
             });
+            let invalid_args = !get("args").is_null()
+                && get("args")
+                    .as_sequence()
+                    .is_none_or(|values| values.iter().any(|v| yaml_string(v).is_none()));
+            let invalid_maps = ["env", "headers"].iter().any(|key| {
+                !get(key).is_null()
+                    && get(key).as_mapping().is_none_or(|values| {
+                        values.iter().any(|(key, value)| {
+                            yaml_string(key).is_none() || yaml_string(value).is_none()
+                        })
+                    })
+            });
+            if unknown || invalid_args || invalid_maps {
+                entry.status = ServerStatus::ParseError(
+                    "Unsupported or malformed DSH server settings; refusing data loss".into(),
+                );
+            } else if get("disabled").as_bool() == Some(true) {
+                entry.status = ServerStatus::Disabled;
+            }
+            entries.push(entry);
         }
         _ => {}
     }
@@ -217,8 +293,7 @@ pub fn parse_dsh_cordis_yaml(
     client: ClientType,
     source_path: PathBuf,
 ) -> Result<Vec<ServerEntry>, serde_yaml::Error> {
-    let cleaned = strip_yaml_tags(content);
-    let root: serde_yaml::Value = serde_yaml::from_str(&cleaned)?;
+    let root: serde_yaml::Value = serde_yaml::from_str(content)?;
     let mut entries = Vec::new();
     collect_dsh_mcp_entries(&root, &client, &source_path, &mut entries);
     Ok(entries)
@@ -264,7 +339,7 @@ pub fn append_dsh_servers(
     let existing = crate::config::safe_io::read_optional(path)?.unwrap_or_default();
     if !existing.trim().is_empty() {
         let root: serde_yaml::Value =
-            serde_yaml::from_str(&strip_yaml_tags(&existing)).map_err(std::io::Error::other)?;
+            serde_yaml::from_str(&existing).map_err(std::io::Error::other)?;
         if !root.is_sequence() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -314,8 +389,7 @@ pub fn append_dsh_servers(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let _: serde_yaml::Value =
-        serde_yaml::from_str(&strip_yaml_tags(&content)).map_err(std::io::Error::other)?;
+    let _: serde_yaml::Value = serde_yaml::from_str(&content).map_err(std::io::Error::other)?;
     crate::config::safe_io::write_config_atomic(path, &content)?;
     Ok((pending.len(), skipped))
 }
@@ -436,7 +510,7 @@ mod tests {
         assert_eq!(entries[0].command, "npx");
         assert_eq!(
             entries[0].env.get("GITHUB_TOKEN").unwrap(),
-            "process.env.GITHUB_TOKEN"
+            "${GITHUB_TOKEN}"
         );
     }
 
@@ -458,7 +532,11 @@ mod tests {
         .unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "web");
-        assert_eq!(entries[0].command, "http://localhost:3000/mcp");
+        assert!(entries[0].command.is_empty());
+        assert_eq!(
+            entries[0].transport.endpoint().unwrap().0,
+            "http://localhost:3000/mcp"
+        );
     }
 
     #[test]

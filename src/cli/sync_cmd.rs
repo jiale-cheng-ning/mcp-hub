@@ -71,154 +71,26 @@ pub fn run(from: &str, to: &str, dry_run: bool) {
         return;
     }
 
-    // Read target config
-    let to_path = match config_path_for(&to_client) {
-        Some(p) => p,
-        None => {
-            eprintln!("Could not determine config path for {}", to_client);
-            return;
-        }
-    };
-
-    if matches!(to_client, ClientType::DeepSeekHarness) {
-        println!(
-            "Syncing {} server(s) from {} to {}...\n",
-            from_entries.len(),
-            from_client,
-            to_client
-        );
-        let existing = match crate::config::safe_io::read_optional(&to_path) {
-            Ok(value) => value.unwrap_or_default(),
-            Err(e) => {
-                eprintln!("Failed to read target config: {}", e);
-                return;
-            }
-        };
-        let already = |name: &str| {
-            existing.contains(&format!("serverName: {name}"))
-                || existing.contains(&format!("serverName: '{name}'"))
-        };
-        let servers: Vec<crate::config::parser::DshServerSpec> = from_entries
-            .iter()
-            .filter(|e| !already(&e.name))
-            .map(|e| {
-                (
-                    e.name.clone(),
-                    e.command.clone(),
-                    e.args.clone(),
-                    e.env.clone(),
-                )
-            })
-            .collect();
-        for entry in &from_entries {
-            if already(&entry.name) {
-                println!("  ⏭  {} (already exists in {})", entry.name, to_client);
-            } else {
-                println!("  ✓  {}", entry.name);
-            }
-        }
-        if dry_run {
-            println!(
-                "\nDry run: would sync {} server(s), skip {} (already exist).",
-                servers.len(),
-                from_entries.len() - servers.len()
-            );
-            println!("No changes written.");
-            return;
-        }
-        match crate::config::parser::append_dsh_servers(&to_path, &servers) {
-            Ok((synced, skipped)) => {
-                println!(
-                    "\nDone! Synced {} server(s), skipped {} (already exist).",
-                    synced, skipped
-                );
-                println!("Config written to: {}", to_path.display());
-                println!("\nRestart {} to load the new servers.", to_client);
-            }
-            Err(e) => eprintln!("Failed to write config: {}", e),
-        }
+    if from_entries
+        .iter()
+        .any(|s| !matches!(s.status, crate::config::model::ServerStatus::Active))
+    {
+        eprintln!("Source contains disabled/invalid entries; refusing to migrate them");
         return;
     }
-
-    let mut existing = match crate::config::safe_io::read_json_config(&to_path) {
-        Ok(value) => value,
-        Err(e) => {
-            eprintln!("Refusing to overwrite invalid or unreadable config: {}", e);
-            return;
-        }
-    };
-
-    let servers = existing
-        .get_mut("mcpServers")
-        .and_then(|v| v.as_object_mut())
-        .unwrap();
-
-    // Sync servers
-    println!(
-        "Syncing {} server(s) from {} to {}...\n",
-        from_entries.len(),
-        from_client,
-        to_client
-    );
-
-    let mut synced = 0;
-    let mut skipped = 0;
-
-    for entry in &from_entries {
-        if servers.contains_key(&entry.name) {
-            println!("  ⏭  {} (already exists in {})", entry.name, to_client);
-            skipped += 1;
-            continue;
-        }
-
-        let mut server_obj = serde_json::Map::new();
-        server_obj.insert(
-            "command".into(),
-            serde_json::Value::String(entry.command.clone()),
-        );
-        if !entry.args.is_empty() {
-            server_obj.insert("args".into(), serde_json::json!(entry.args));
-        }
-        if !entry.env.is_empty() {
-            let env_map: serde_json::Map<String, serde_json::Value> = entry
-                .env
-                .iter()
-                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                .collect();
-            server_obj.insert("env".into(), serde_json::Value::Object(env_map));
-        }
-
-        servers.insert(entry.name.clone(), serde_json::Value::Object(server_obj));
-        println!("  ✓  {}", entry.name);
-        synced += 1;
-    }
-
-    if dry_run {
-        println!(
-            "\nDry run: would sync {} server(s), skip {} (already exist).",
-            synced, skipped
-        );
-        println!("No changes written.");
+    let Some(to_path) = config_path_for(&to_client) else {
+        eprintln!("Missing destination path");
         return;
-    }
-
-    // Write target config
-    if let Some(parent) = to_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let output = serde_json::to_string_pretty(&existing).unwrap_or_default();
-    match crate::config::safe_io::write_config_atomic(&to_path, &output) {
-        Ok(()) => {
-            println!(
-                "\nDone! Synced {} server(s), skipped {} (already exist).",
-                synced, skipped
-            );
-            println!("Config written to: {}", to_path.display());
-            println!("\nRestart {} to load the new servers.", to_client);
-        }
-        Err(e) => {
-            eprintln!("Failed to write config: {}", e);
-        }
+    };
+    let export = crate::config::model::ExportData::for_sync(&from_entries);
+    match crate::config::write::merge(&to_path, &to_client, &export, dry_run) {
+        Ok((added, skipped)) => println!(
+            "{}: {} server(s), {} existing skipped",
+            if dry_run { "Dry run" } else { "Synced" },
+            added,
+            skipped
+        ),
+        Err(error) => eprintln!("Sync failed: {}", error),
     }
 }
 
