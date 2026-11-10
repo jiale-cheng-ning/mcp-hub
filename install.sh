@@ -1,6 +1,6 @@
 #!/bin/sh
 # mcp-hub installer — https://github.com/jiale-cheng-ning/mcp-hub
-# Usage: curl -sSL https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/master/install.sh | sh
 
 set -e
 

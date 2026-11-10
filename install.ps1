@@ -1,5 +1,5 @@
 # mcp-hub installer for Windows PowerShell
-# Usage: iwr -useb https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/main/install.ps1 | iex
+# Usage: iwr -useb https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/master/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 

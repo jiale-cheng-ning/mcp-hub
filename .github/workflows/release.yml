@@ -55,8 +55,24 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
 
+  dsh-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pack dependency-free DSH bundle
+        run: |
+          npm pack
+          mv jiale-cheng-ning-dsh-mcp-hub-*.tgz dsh-mcp-hub.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-mcp-hub
+          path: dsh-mcp-hub.tgz
+
   release:
-    needs: build
+    needs: [build, dsh-package]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -73,3 +89,4 @@ jobs:
             artifacts/mcp-hub-darwin-arm64/mcp-hub-darwin-arm64
             artifacts/mcp-hub-darwin-amd64/mcp-hub-darwin-amd64
             artifacts/mcp-hub-windows-amd64.exe/mcp-hub-windows-amd64.exe
+            artifacts/dsh-mcp-hub/dsh-mcp-hub.tgz

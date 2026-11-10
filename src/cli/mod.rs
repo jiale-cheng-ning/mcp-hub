@@ -4,6 +4,7 @@ mod doctor_cmd;
 mod export_cmd;
 mod import_cmd;
 mod preset_cmd;
+mod report_cmd;
 mod scan;
 mod search_cmd;
 mod sync_cmd;
@@ -17,12 +18,29 @@ use clap::{Parser, Subcommand};
     about = "One TUI to manage all your MCP servers"
 )]
 struct Cli {
+    /// Initial TUI theme; overrides the saved preference for this session
+    #[arg(long, value_enum)]
+    theme: Option<crate::tui::theme::Theme>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Versioned JSON reports for the DSH plugin (no configuration writes)
+    Report {
+        #[arg(value_enum)]
+        operation: report_cmd::Operation,
+        /// Restrict discovery to one client
+        #[arg(long)]
+        client: Option<String>,
+        /// Exact server name; required for doctor
+        #[arg(long)]
+        server: Option<String>,
+        /// Per-server probe deadline (1-30 seconds)
+        #[arg(long, default_value = "5", value_parser = clap::value_parser!(u64).range(1..=30))]
+        timeout: u64,
+    },
     /// List all discovered MCP servers
     Scan {
         /// Filter by client name
@@ -133,6 +151,14 @@ enum PresetAction {
 pub fn run() {
     let cli = Cli::parse();
     match cli.command {
+        Some(Commands::Report {
+            operation,
+            client,
+            server,
+            timeout,
+        }) => {
+            report_cmd::run(operation, client.as_deref(), server.as_deref(), timeout);
+        }
         Some(Commands::Scan { client, json }) => {
             scan::run(client.as_deref(), json);
         }
@@ -184,7 +210,7 @@ pub fn run() {
                 eprintln!("Warning: {}", e);
                 Vec::new()
             });
-            if let Err(e) = crate::tui::run_tui(entries) {
+            if let Err(e) = crate::tui::run_tui(entries, cli.theme) {
                 eprintln!("TUI error: {}", e);
             }
         }

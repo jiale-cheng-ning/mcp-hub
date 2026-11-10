@@ -1,0 +1,23 @@
+{
+  "name": "@jiale-cheng-ning/dsh-mcp-hub",
+  "version": "0.1.0",
+  "description": "Scan MCP configurations, audit security rules and check individual MCP servers from DeepSeek Harness.",
+  "type": "module",
+  "exports": {
+    ".": "./dsh/index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./dsh/locale/*.json"
+  },
+  "files": ["dsh", "cordis.patch.yml", "docs/dsh-plugin.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test tests/dsh/*.test.mjs",
+    "test:dsh-runtime": "node tests/dsh/runtime-smoke.mjs"
+  },
+  "engines": { "node": ">=20.11", "dsh": ">=0.1.7-rc.1 <0.3.0 || >=0.2.1-rc.1 <0.3.0" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/jiale-cheng-ning/mcp-hub.git" },
+  "keywords": ["dsh-plugin", "deepseek-harness", "mcp", "security"],
+  "license": "MIT"
+}

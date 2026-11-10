@@ -33,7 +33,7 @@ Some are broken. Some have security issues. You can't see them all at once.
 
 | Feature | Description |
 |---------|-------------|
-| **TUI Dashboard** | Interactive terminal UI — browse, inspect, and filter all MCP servers |
+| **TUI Dashboard** | Browse, inspect and filter MCP servers; switch Dark / Light themes with `t` |
 | **Auto-Discovery** | Scans Claude Desktop, Claude Code, Cursor, Windsurf, and DeepSeek Harness (`$DSH_HOME/cordis.patch.yml` + profiles) configs automatically |
 | **Security Audit** | **15 rules** — typosquatting, CVE detection, postinstall scripts, shell injection, secrets, and more |
 | **MCP Doctor** | Real MCP protocol health checks — spawns servers, validates handshake, counts tools |
@@ -44,14 +44,21 @@ Some are broken. Some have security issues. You can't see them all at once.
 
 ## Install
 
+### DeepSeek Harness plugin
+
+The repository also provides three DSH conversation tools: `mcp_hub_scan`,
+`mcp_hub_audit`, and `mcp_hub_doctor`. They use a separately installed Rust binary
+from this checkout and display bounded reports without raw configuration values.
+See [DSH plugin installation and usage](docs/dsh-plugin.md).
+
 ### One-line install (recommended)
 
 ```bash
 # Linux / macOS
-curl -sSL https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/master/install.sh | sh
 
 # Windows (PowerShell)
-iwr -useb https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/jiale-cheng-ning/mcp-hub/master/install.ps1 | iex
 ```
 
 ### Download from GitHub Releases
@@ -91,6 +98,13 @@ mcp-hub sync --from cursor --to dsh             # Sync into DeepSeek Harness
 
 ### TUI keybindings
 
+Press `t` on either tab to switch between **Dark** and **Light**. Text,
+backgrounds, selected rows, borders and severity badges use the same theme.
+The choice is remembered on normal exit in the OS config directory under
+`mcp-hub/theme`. Missing or invalid preferences default to Dark.
+Use `mcp-hub --theme light` or `mcp-hub --theme dark` to override the saved
+theme for one session. While searching, `t` is entered as normal search text.
+
 **Servers tab:**
 
 | Key | Action |
@@ -98,6 +112,7 @@ mcp-hub sync --from cursor --to dsh             # Sync into DeepSeek Harness
 | `j` / `↓` | Move down |
 | `k` / `↑` | Move up |
 | `Tab` | Switch to Audit tab |
+| `t` | Switch Dark / Light theme |
 | `q` / `Esc` | Quit |
 
 **Audit tab:**
@@ -112,6 +127,7 @@ mcp-hub sync --from cursor --to dsh             # Sync into DeepSeek Harness
 | `g` | Jump to first finding |
 | `G` | Jump to last finding |
 | `Tab` | Switch to Servers tab |
+| `t` | Switch Dark / Light theme |
 | `q` / `Esc` | Quit |
 
 ## Audit rules (15)
@@ -212,9 +228,11 @@ jobs:
 | Client | Config location |
 |--------|----------------|
 | Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |
-| Claude Code | `~/.claude/settings.json` |
+| Claude Code | `~/.claude.json` and project `.mcp.json` |
+| VS Code | OS config directory `Code/User/mcp.json` and project `.vscode/mcp.json` |
 | Cursor | `~/.cursor/mcp.json` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| DeepSeek Harness | `$DSH_HOME/cordis.patch.yml` and profile patch files (default home `~/.dsh`) |
 
 ## Roadmap
 

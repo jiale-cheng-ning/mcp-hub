@@ -1,9 +1,10 @@
 use crate::config::model::ServerStatus;
 use crate::tui::app::App;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
+use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
 pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
+    let palette = app.theme.palette();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
@@ -19,7 +20,7 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
     ])
     .style(
         Style::default()
-            .fg(Color::Yellow)
+            .fg(palette.accent)
             .add_modifier(Modifier::BOLD),
     );
 
@@ -27,21 +28,31 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
         .iter()
         .map(|&i| {
             let s = &app.servers[i];
-            let status_str = match &s.status {
-                ServerStatus::Active => "🟢 Active",
-                ServerStatus::Disabled => "⏸  Disabled",
-                ServerStatus::ParseError(_) => "🔴 Error",
+            let (status_str, status_color) = match &s.status {
+                ServerStatus::Active => ("[+] Active", palette.success),
+                ServerStatus::Disabled => ("[-] Disabled", palette.muted),
+                ServerStatus::ParseError(_) => ("[!] Error", palette.critical),
             };
             let style = if i == app.selected {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
+                palette.selected().add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
+                palette.base()
             };
             Row::new(vec![
-                Cell::from(s.name.clone()),
+                Cell::from(format!(
+                    "{}{}",
+                    if i == app.selected { "> " } else { "  " },
+                    s.name
+                )),
                 Cell::from(format!("{}", s.source_client)),
                 Cell::from(format!("{}: {}", s.transport.label(), s.display_endpoint())),
-                Cell::from(status_str),
+                Cell::from(status_str).style(Style::default().fg(
+                    if i == app.selected && matches!(s.status, ServerStatus::Disabled) {
+                        palette.selected_foreground
+                    } else {
+                        status_color
+                    },
+                )),
             ])
             .style(style)
         })
@@ -70,8 +81,9 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Percentage(20),
         ],
     )
+    .style(palette.base())
     .header(header)
-    .block(Block::default().borders(Borders::ALL).title(title));
+    .block(palette.block(title));
 
     frame.render_widget(table, chunks[0]);
 
@@ -103,7 +115,8 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let detail_widget = Paragraph::new(detail)
-        .block(Block::default().borders(Borders::ALL).title("Detail"))
+        .style(palette.base())
+        .block(palette.block("Detail"))
         .wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(detail_widget, chunks[1]);
 }

@@ -1,0 +1,5 @@
+# Host-only plugin. The Rust binary is installed separately; activation runs no commands.
+- insert:
+    - id: mcp-hub
+      name: '@jiale-cheng-ning/dsh-mcp-hub'
+      config: {}

@@ -19,6 +19,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -31,6 +34,13 @@ jobs:
           MCP_HUB_TEST_PYTHON: python
       - name: Clippy
         run: cargo clippy -- -D warnings
+      - name: DSH plugin tests (including Rust reports)
+        run: npm test
+        env:
+          MCP_HUB_TEST_BIN: target/debug/mcp-hub${{ runner.os == 'Windows' && '.exe' || '' }}
+          MCP_HUB_TEST_PYTHON: python
+      - name: Check DSH package contents
+        run: npm pack --dry-run
       - name: Format check
         if: matrix.os == 'ubuntu-latest'
         run: cargo fmt --check

@@ -1,6 +1,6 @@
 use crate::config::model::{ClientType, ServerEntry};
 use crate::config::parser::{parse_config, parse_dsh_cordis_yaml};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Resolve DeepSeek Harness home: `$DSH_HOME` or `~/.dsh`.
 pub fn dsh_home() -> Option<PathBuf> {
@@ -88,25 +88,33 @@ pub fn known_config_paths() -> Vec<(ClientType, PathBuf)> {
     paths
 }
 
-fn read_config_file(path: &Path) -> Option<String> {
-    if !path.exists() {
-        return None;
-    }
-    match std::fs::read_to_string(path) {
-        Ok(s) => Some(s),
-        Err(e) => {
-            eprintln!("Warning: failed to read {}: {}", path.display(), e);
-            None
-        }
-    }
+/// Diagnostics omit parser messages, which may contain credentials.
+#[derive(Debug, serde::Serialize)]
+pub struct DiscoveryWarning {
+    pub client: String,
+    pub code: &'static str,
 }
 
-pub fn discover() -> Result<Vec<ServerEntry>, Box<dyn std::error::Error>> {
+pub fn discover_with_warnings(
+    filter: Option<&ClientType>,
+) -> (Vec<ServerEntry>, Vec<DiscoveryWarning>) {
     let mut all_entries = Vec::new();
+    let mut warnings = Vec::new();
 
     for (client, path) in known_config_paths() {
-        let Some(content) = read_config_file(&path) else {
+        if filter.is_some_and(|selected| selected != &client) {
             continue;
+        }
+        let content = match std::fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                warnings.push(DiscoveryWarning {
+                    client: client.to_string(),
+                    code: "unreadable_config",
+                });
+                continue;
+            }
         };
         let parsed = if matches!(client, ClientType::DeepSeekHarness) {
             parse_dsh_cordis_yaml(&content, client.clone(), path.clone()).map_err(|e| e.to_string())
@@ -115,13 +123,24 @@ pub fn discover() -> Result<Vec<ServerEntry>, Box<dyn std::error::Error>> {
         };
         match parsed {
             Ok(entries) => all_entries.extend(entries),
-            Err(e) => {
-                eprintln!("Warning: failed to parse {}: {}", path.display(), e);
+            Err(_) => {
+                warnings.push(DiscoveryWarning {
+                    client: client.to_string(),
+                    code: "invalid_config",
+                });
             }
         }
     }
 
-    Ok(all_entries)
+    (all_entries, warnings)
+}
+
+pub fn discover() -> Result<Vec<ServerEntry>, Box<dyn std::error::Error>> {
+    let (entries, warnings) = discover_with_warnings(None);
+    for warning in warnings {
+        eprintln!("Warning: {}: {}", warning.client, warning.code);
+    }
+    Ok(entries)
 }
 
 #[cfg(test)]

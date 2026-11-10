@@ -1,6 +1,7 @@
 use crate::audit::rules::Finding;
 use crate::audit::rules::Severity;
 use crate::config::model::ServerEntry;
+use crate::tui::theme::Theme;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use std::time::Duration;
 
@@ -42,6 +43,8 @@ impl AuditFilter {
 }
 
 pub struct App {
+    pub theme: Theme,
+    pub theme_changed: bool,
     pub servers: Vec<ServerEntry>,
     pub selected: usize,
     pub tab: Tab,
@@ -57,9 +60,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(servers: Vec<ServerEntry>) -> Self {
+    pub fn new(servers: Vec<ServerEntry>, theme: Theme) -> Self {
         let cached_findings = crate::audit::engine::run_audit(&servers);
         Self {
+            theme,
+            theme_changed: false,
             servers,
             selected: 0,
             tab: Tab::Servers,
@@ -114,19 +119,26 @@ impl App {
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    // Search mode captures all input
-                    if self.search_mode {
-                        self.handle_search_input(key.code);
-                        return Ok(());
-                    }
-                    match &self.tab {
-                        Tab::Servers => self.handle_servers_input(key.code),
-                        Tab::Audit => self.handle_audit_input(key.code),
-                    }
+                    self.handle_key(key.code);
                 }
             }
         }
         Ok(())
+    }
+
+    pub fn handle_key(&mut self, code: KeyCode) {
+        // Typing "t" in a search must stay text, rather than change the theme.
+        if self.search_mode {
+            self.handle_search_input(code);
+        } else if code == KeyCode::Char('t') {
+            self.theme = self.theme.toggle();
+            self.theme_changed = true;
+        } else {
+            match self.tab {
+                Tab::Servers => self.handle_servers_input(code),
+                Tab::Audit => self.handle_audit_input(code),
+            }
+        }
     }
 
     fn handle_search_input(&mut self, code: KeyCode) {

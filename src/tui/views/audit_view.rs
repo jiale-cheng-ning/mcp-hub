@@ -1,19 +1,17 @@
 use crate::audit::rules::Severity;
 use crate::tui::app::App;
+use crate::tui::theme::Palette;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
+    let palette = app.theme.palette();
     let filtered = app.filtered_findings();
 
     if filtered.is_empty() && app.cached_findings.is_empty() {
         let msg = Paragraph::new("No issues found. All MCP server configs look clean.")
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Security Audit"),
-            )
-            .style(Style::default().fg(Color::Green));
+            .block(palette.block("Security Audit"))
+            .style(palette.base().fg(palette.success));
         frame.render_widget(msg, area);
         return;
     }
@@ -29,29 +27,37 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // ─── Filter bar ───
     let filter_text = vec![
-        filter_chip("1:Critical", app.audit_filter.show_critical, Color::Red),
+        filter_chip(
+            "1:Critical",
+            app.audit_filter.show_critical,
+            palette.critical,
+            palette,
+        ),
         Span::raw("  "),
-        filter_chip("2:Warning", app.audit_filter.show_warning, Color::Yellow),
+        filter_chip(
+            "2:Warning",
+            app.audit_filter.show_warning,
+            palette.warning,
+            palette,
+        ),
         Span::raw("  "),
-        filter_chip("3:Info", app.audit_filter.show_info, Color::Blue),
+        filter_chip("3:Info", app.audit_filter.show_info, palette.info, palette),
         Span::raw("  "),
         Span::styled(
             format!("  {}/{} shown", filtered.len(), app.cached_findings.len()),
-            Style::default().fg(Color::DarkGray),
+            palette.secondary(),
         ),
     ];
-    let filter_bar = Paragraph::new(Line::from(filter_text)).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Filter (toggle with 1/2/3)"),
-    );
+    let filter_bar = Paragraph::new(Line::from(filter_text))
+        .style(palette.base())
+        .block(palette.block("Filter (toggle with 1/2/3)"));
     frame.render_widget(filter_bar, chunks[0]);
 
     // ─── Findings list ───
     if filtered.is_empty() {
         let msg = Paragraph::new("No findings match the current filter.")
-            .block(Block::default().borders(Borders::ALL).title("Findings"))
-            .style(Style::default().fg(Color::DarkGray));
+            .block(palette.block("Findings"))
+            .style(palette.secondary());
         frame.render_widget(msg, chunks[1]);
         return;
     }
@@ -61,14 +67,19 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
         .enumerate()
         .map(|(i, f)| {
             let (icon, color) = match f.severity {
-                Severity::Critical => ("!", Color::Red),
-                Severity::Warning => ("~", Color::Yellow),
-                Severity::Info => ("i", Color::Blue),
+                Severity::Critical => ("!", palette.critical),
+                Severity::Warning => ("~", palette.warning),
+                Severity::Info => ("i", palette.info),
             };
             let style = if i == app.audit_selected {
-                Style::default().fg(Color::Black).bg(color)
+                palette.selected()
             } else {
-                Style::default()
+                palette.base()
+            };
+            let secondary = if i == app.audit_selected {
+                palette.selected()
+            } else {
+                palette.secondary()
             };
 
             let lines = vec![
@@ -77,16 +88,10 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
                         format!(" {} ", icon),
                         Style::default().fg(color).add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(
-                        format!("[{}] ", f.rule_id),
-                        Style::default().fg(Color::DarkGray),
-                    ),
+                    Span::styled(format!("[{}] ", f.rule_id), secondary),
                     Span::raw(format!("{}: {}", f.server_name, f.message)),
                 ]),
-                Line::from(Span::styled(
-                    format!("   Fix: {}", f.fix),
-                    Style::default().fg(Color::DarkGray),
-                )),
+                Line::from(Span::styled(format!("   Fix: {}", f.fix), secondary)),
             ];
 
             ListItem::new(lines).style(style)
@@ -97,33 +102,27 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
     list_state.select(Some(app.audit_selected));
 
     let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!(
-                    "Security Audit — {} findings (j/k: navigate, Enter: jump to server)",
-                    filtered.len()
-                ))
-                .border_style(Style::default().fg(Color::DarkGray)),
-        )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        .style(palette.base())
+        .block(palette.block(format!(
+            "Security Audit — {} findings (j/k: navigate, Enter: jump to server)",
+            filtered.len()
+        )))
+        .highlight_style(palette.selected().add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
 
     frame.render_stateful_widget(list, chunks[1], &mut list_state);
 }
 
-fn filter_chip<'a>(label: &'a str, active: bool, color: Color) -> Span<'a> {
+fn filter_chip<'a>(label: &'a str, active: bool, color: Color, palette: Palette) -> Span<'a> {
     if active {
         Span::styled(
             format!(" [{}] ", label),
             Style::default()
-                .fg(Color::Black)
+                .fg(palette.badge_foreground)
                 .bg(color)
                 .add_modifier(Modifier::BOLD),
         )
     } else {
-        Span::styled(
-            format!(" [{}] ", label),
-            Style::default().fg(Color::DarkGray),
-        )
+        Span::styled(format!(" [{}] ", label), palette.secondary())
     }
 }
